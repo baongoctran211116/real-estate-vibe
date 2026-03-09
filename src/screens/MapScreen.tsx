@@ -9,37 +9,33 @@ import {
   TouchableOpacity,
   Animated,
 } from 'react-native';
-
-//import MapView, { Region } from 'react-native-maps';
-
-import MapView from 'react-native-maps';
-import type { Region } from 'react-native-maps';
-
+import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMapProperties } from '../features/map/useMapProperties';
 import { useFilterStore, PROVINCES } from '../store/useFilterStore';
-import { PropertyMarker } from '../components/MapClusterMarker';
 import PropertyPreviewCard from '../components/PropertyPreviewCard';
 import SearchBar from '../components/SearchBar';
 import FilterPanel from '../components/FilterPanel';
 import { Property, Province } from '../types/property';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-const INITIAL_REGION: Region = {
-  latitude: 16.0,
-  longitude: 106.5,
-  latitudeDelta: 12,
-  longitudeDelta: 12,
+const PROVINCE_REGIONS: Record<Province, { lat: number; lng: number; zoom: number }> = {
+  Hanoi:              { lat: 21.028, lng: 105.854, zoom: 12 },
+  'Ho Chi Minh City': { lat: 10.776, lng: 106.701, zoom: 12 },
+  'Da Nang':          { lat: 16.054, lng: 108.202, zoom: 12 },
+  'Hai Phong':        { lat: 20.865, lng: 106.684, zoom: 12 },
+  'Can Tho':          { lat: 10.034, lng: 105.788, zoom: 12 },
 };
 
 const MapScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
-  const mapRef = useRef<MapView>(null);
+  const webViewRef = useRef<WebView>(null);
 
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   const [filterVisible, setFilterVisible] = useState(false);
   const [searchText, setSearchText] = useState('');
+  const [mapReady, setMapReady] = useState(false);
 
   const previewAnim = useRef(new Animated.Value(0)).current;
 
@@ -49,111 +45,305 @@ const MapScreen: React.FC = () => {
 
   const { properties, isLoading } = useMapProperties();
 
-  // Show/hide preview card with animation
-  const showPreview = useCallback((property: Property) => {
-    setSelectedProperty(property);
-    Animated.spring(previewAnim, {
-      toValue: 1,
-      useNativeDriver: true,
-      tension: 60,
-      friction: 10,
-    }).start();
+  // ─── Filter properties locally ───────────────────────────
+  const filteredProperties = React.useMemo(() => {
+    let list = properties;
+    if (searchText.trim()) {
+      const q = searchText.toLowerCase();
+      list = list.filter(
+        (p) =>
+          p.title.toLowerCase().includes(q) ||
+          p.district.toLowerCase().includes(q) ||
+          p.province.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [properties, searchText]);
 
-    // Pan map to selected property
-    mapRef.current?.animateToRegion(
-      {
-        latitude: property.latitude - 0.005,
-        longitude: property.longitude,
-        latitudeDelta: 0.04,
-        longitudeDelta: 0.04,
-      },
-      400
-    );
-  }, [previewAnim]);
+  // ─── Build Leaflet HTML ───────────────────────────────────
+  const buildMapHTML = useCallback(
+    (props: Property[]) => {
+      const markersJson = JSON.stringify(
+        props.map((p) => ({
+          id: p.id,
+          lat: p.latitude,
+          lng: p.longitude,
+          price: formatPriceShort(p.price),
+          title: p.title,
+          district: p.district,
+          province: p.province,
+          type: p.propertyType,
+        }))
+      );
 
+      return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body, #map { width: 100%; height: 100%; }
+
+    /* Custom price marker */
+    .price-marker {
+      background: #2563EB;
+      color: white;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 5px 9px;
+      border-radius: 8px;
+      white-space: nowrap;
+      box-shadow: 0 2px 8px rgba(37,99,235,0.45);
+      border: 2px solid white;
+      cursor: pointer;
+      transition: transform 0.15s;
+    }
+    .price-marker:hover { transform: scale(1.08); }
+    .price-marker.selected {
+      background: #1D4ED8;
+      transform: scale(1.12);
+      z-index: 999 !important;
+    }
+    .price-marker::after {
+      content: '';
+      position: absolute;
+      bottom: -7px;
+      left: 50%;
+      transform: translateX(-50%);
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-top: 7px solid #2563EB;
+    }
+    .price-marker.selected::after {
+      border-top-color: #1D4ED8;
+    }
+
+    /* Cluster override */
+    .marker-cluster-small,
+    .marker-cluster-medium,
+    .marker-cluster-large {
+      background-color: rgba(37,99,235,0.25) !important;
+    }
+    .marker-cluster-small div,
+    .marker-cluster-medium div,
+    .marker-cluster-large div {
+      background-color: #2563EB !important;
+      color: white !important;
+      font-weight: 700 !important;
+      font-size: 13px !important;
+    }
+
+    /* OSM attribution tweak */
+    .leaflet-control-attribution {
+      font-size: 9px;
+    }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+  // Init map centered on Vietnam
+  const map = L.map('map', {
+    zoomControl: false,
+    attributionControl: true,
+  }).setView([16.0, 106.5], 6);
+
+  // OpenStreetMap tile layer — no API key needed
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19,
+  }).addTo(map);
+
+  // Zoom control bottom-right
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+  // Marker cluster group
+  const clusterGroup = L.markerClusterGroup({
+    maxClusterRadius: 50,
+    showCoverageOnHover: false,
+    spiderfyOnMaxZoom: true,
+    zoomToBoundsOnClick: true,
+    iconCreateFunction: function(cluster) {
+      const count = cluster.getChildCount();
+      return L.divIcon({
+        html: '<div>' + count + '</div>',
+        className: 'marker-cluster marker-cluster-' + (count < 10 ? 'small' : count < 50 ? 'medium' : 'large'),
+        iconSize: [40, 40],
+      });
+    },
+  });
+
+  const markers = ${markersJson};
+  let selectedId = null;
+  const markerMap = {};
+
+  // Create custom price markers
+  markers.forEach(function(p) {
+    const icon = L.divIcon({
+      html: '<div class="price-marker" id="marker-' + p.id + '">' + p.price + '</div>',
+      className: '',
+      iconSize: null,
+      iconAnchor: [0, 28],
+    });
+
+    const marker = L.marker([p.lat, p.lng], { icon });
+
+    marker.on('click', function() {
+      // Deselect previous
+      if (selectedId && markerMap[selectedId]) {
+        const prevEl = document.getElementById('marker-' + selectedId);
+        if (prevEl) prevEl.classList.remove('selected');
+      }
+
+      // Select current
+      selectedId = p.id;
+      const el = document.getElementById('marker-' + p.id);
+      if (el) el.classList.add('selected');
+
+      // Send to React Native
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: 'MARKER_PRESS',
+        propertyId: p.id,
+      }));
+    });
+
+    markerMap[p.id] = marker;
+    clusterGroup.addLayer(marker);
+  });
+
+  map.addLayer(clusterGroup);
+
+  // Tap on map to deselect
+  map.on('click', function() {
+    if (selectedId) {
+      const el = document.getElementById('marker-' + selectedId);
+      if (el) el.classList.remove('selected');
+      selectedId = null;
+    }
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MAP_PRESS' }));
+  });
+
+  // Ready signal
+  window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MAP_READY' }));
+
+  // Receive commands from React Native
+  window.addEventListener('message', function(e) {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'FLY_TO') {
+        map.flyTo([msg.lat, msg.lng], msg.zoom, { duration: 0.8 });
+      }
+      if (msg.type === 'DESELECT') {
+        if (selectedId) {
+          const el = document.getElementById('marker-' + selectedId);
+          if (el) el.classList.remove('selected');
+          selectedId = null;
+        }
+      }
+    } catch(err) {}
+  });
+</script>
+</body>
+</html>
+      `;
+    },
+    []
+  );
+
+  // ─── Handle messages from WebView ────────────────────────
+  const handleWebViewMessage = useCallback(
+    (event: any) => {
+      try {
+        const msg = JSON.parse(event.nativeEvent.data);
+
+        if (msg.type === 'MAP_READY') {
+          setMapReady(true);
+        }
+
+        if (msg.type === 'MARKER_PRESS') {
+          const property = filteredProperties.find((p) => p.id === msg.propertyId);
+          if (property) {
+            setSelectedProperty(property);
+            Animated.spring(previewAnim, {
+              toValue: 1,
+              useNativeDriver: true,
+              tension: 60,
+              friction: 10,
+            }).start();
+          }
+        }
+
+        if (msg.type === 'MAP_PRESS') {
+          hidePreview();
+        }
+      } catch (e) {}
+    },
+    [filteredProperties, previewAnim]
+  );
+
+  // ─── Hide preview ─────────────────────────────────────────
   const hidePreview = useCallback(() => {
     Animated.timing(previewAnim, {
       toValue: 0,
       duration: 200,
       useNativeDriver: true,
     }).start(() => setSelectedProperty(null));
+
+    // Deselect marker in WebView
+    webViewRef.current?.postMessage(JSON.stringify({ type: 'DESELECT' }));
   }, [previewAnim]);
 
-  const handleMarkerPress = useCallback(
-    (property: Property) => {
-      if (selectedProperty?.id === property.id) {
-        hidePreview();
-      } else {
-        showPreview(property);
-      }
-    },
-    [selectedProperty, showPreview, hidePreview]
-  );
-
-  const handleMapPress = useCallback(() => {
-    if (selectedProperty) hidePreview();
-  }, [selectedProperty, hidePreview]);
-
-  // Zoom to province
-  const zoomToProvince = useCallback(
+  // ─── Fly to province ──────────────────────────────────────
+  const flyToProvince = useCallback(
     (province: Province) => {
-      const regionMap: Record<Province, Region> = {
-        Hanoi: { latitude: 21.028, longitude: 105.854, latitudeDelta: 0.4, longitudeDelta: 0.4 },
-        'Ho Chi Minh City': { latitude: 10.776, longitude: 106.701, latitudeDelta: 0.3, longitudeDelta: 0.3 },
-        'Da Nang': { latitude: 16.054, longitude: 108.202, latitudeDelta: 0.25, longitudeDelta: 0.25 },
-        'Hai Phong': { latitude: 20.865, longitude: 106.684, latitudeDelta: 0.3, longitudeDelta: 0.3 },
-        'Can Tho': { latitude: 10.034, longitude: 105.788, latitudeDelta: 0.25, longitudeDelta: 0.25 },
-      };
+      const region = PROVINCE_REGIONS[province];
       setFilter('province', filters.province === province ? undefined : province);
       if (filters.province !== province) {
-        mapRef.current?.animateToRegion(regionMap[province], 600);
+        webViewRef.current?.postMessage(
+          JSON.stringify({ type: 'FLY_TO', lat: region.lat, lng: region.lng, zoom: region.zoom })
+        );
       }
     },
     [filters.province, setFilter]
   );
 
-  const filteredProperties = React.useMemo(() => {
-    if (!searchText.trim()) return properties;
-    const q = searchText.toLowerCase();
-    return properties.filter(
-      (p) =>
-        p.title.toLowerCase().includes(q) ||
-        p.district.toLowerCase().includes(q) ||
-        p.province.toLowerCase().includes(q)
-    );
-  }, [properties, searchText]);
+  // ─── Rebuild HTML when filtered properties change ─────────
+  const mapHTML = React.useMemo(
+    () => buildMapHTML(filteredProperties),
+    [filteredProperties, buildMapHTML]
+  );
 
   return (
     <View style={styles.container}>
-      {/* Map */}
-      <MapView
-        ref={mapRef}
+      {/* OSM Map via WebView */}
+      <WebView
+        ref={webViewRef}
+        source={{ html: mapHTML }}
         style={StyleSheet.absoluteFillObject}
-        initialRegion={INITIAL_REGION}
-        onPress={handleMapPress}
-        showsUserLocation
-        showsMyLocationButton={false}
-        showsCompass={false}
-        toolbarEnabled={false}
-      >
-        {filteredProperties.map((property) => (
-          <PropertyMarker
-            key={property.id}
-            property={property}
-            onPress={handleMarkerPress}
-            isSelected={selectedProperty?.id === property.id}
-          />
-        ))}
-      </MapView>
+        onMessage={handleWebViewMessage}
+        javaScriptEnabled
+        domStorageEnabled
+        startInLoadingState={false}
+        scrollEnabled={false}
+        bounces={false}
+        originWhitelist={['*']}
+      />
 
       {/* Loading overlay */}
-      {isLoading && (
+      {(isLoading || !mapReady) && (
         <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="small" color="#2563EB" />
+          <ActivityIndicator size="large" color="#2563EB" />
+          <Text style={styles.loadingText}>Đang tải bản đồ...</Text>
         </View>
       )}
 
-      {/* Top search + filter bar */}
+      {/* Top search + filter */}
       <View style={[styles.topBar, { top: insets.top + 10 }]}>
         <View style={styles.searchWrapper}>
           <SearchBar
@@ -172,7 +362,7 @@ const MapScreen: React.FC = () => {
         </TouchableOpacity>
       </View>
 
-      {/* Province quick-select pills */}
+      {/* Province pills */}
       <View style={[styles.provincePills, { top: insets.top + 70 }]}>
         {PROVINCES.map((p) => (
           <TouchableOpacity
@@ -181,7 +371,7 @@ const MapScreen: React.FC = () => {
               styles.provincePill,
               filters.province === p && styles.provincePillActive,
             ]}
-            onPress={() => zoomToProvince(p as Province)}
+            onPress={() => flyToProvince(p as Province)}
             activeOpacity={0.8}
           >
             <Text
@@ -191,30 +381,32 @@ const MapScreen: React.FC = () => {
               ]}
               numberOfLines={1}
             >
-              {p.replace(' City', '').replace('Ho Chi Minh', 'HCM')}
+              {p.replace('Ho Chi Minh City', 'HCM')}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      {/* Property count badge */}
-      <View style={[styles.countBadge, { top: insets.top + 118 }]}>
+      {/* Count badge */}
+      <View style={[styles.countBadge, { top: insets.top + 120 }]}>
         <Text style={styles.countBadgeText}>
           🏠 {filteredProperties.length} bất động sản
         </Text>
       </View>
 
-      {/* My location button */}
+      {/* Reset view button */}
       <TouchableOpacity
-        style={[styles.myLocationBtn, { bottom: 100 + insets.bottom }]}
+        style={[styles.resetBtn, { bottom: 100 + insets.bottom }]}
         onPress={() =>
-          mapRef.current?.animateToRegion(INITIAL_REGION, 600)
+          webViewRef.current?.postMessage(
+            JSON.stringify({ type: 'FLY_TO', lat: 16.0, lng: 106.5, zoom: 6 })
+          )
         }
       >
-        <Text style={styles.myLocationIcon}>🎯</Text>
+        <Text style={styles.resetBtnIcon}>🎯</Text>
       </TouchableOpacity>
 
-      {/* Preview card */}
+      {/* Property preview card */}
       {selectedProperty && (
         <Animated.View
           style={[
@@ -240,30 +432,33 @@ const MapScreen: React.FC = () => {
         </Animated.View>
       )}
 
-      <FilterPanel
-        visible={filterVisible}
-        onClose={() => setFilterVisible(false)}
-      />
+      <FilterPanel visible={filterVisible} onClose={() => setFilterVisible(false)} />
     </View>
   );
 };
 
+// ─── Helper ───────────────────────────────────────────────
+function formatPriceShort(price: number): string {
+  if (price >= 1_000_000_000) {
+    return parseFloat((price / 1_000_000_000).toFixed(1)) + ' tỷ';
+  }
+  if (price >= 1_000_000) {
+    return Math.round(price / 1_000_000) + ' tr';
+  }
+  return price.toString();
+}
+
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: '#E5E7EB' },
   loadingOverlay: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    marginLeft: -20,
-    marginTop: -20,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.92)',
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 8,
+    gap: 12,
+    zIndex: 99,
   },
+  loadingText: { fontSize: 14, color: '#6B7280', fontWeight: '500' },
   topBar: {
     position: 'absolute',
     left: 16,
@@ -271,6 +466,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    zIndex: 10,
   },
   searchWrapper: { flex: 1 },
   mapSearchBar: {
@@ -312,9 +508,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: 12,
     gap: 6,
+    zIndex: 10,
+    flexWrap: 'nowrap',
   },
   provincePill: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 7,
     borderRadius: 20,
     backgroundColor: 'rgba(255,255,255,0.95)',
@@ -325,11 +523,10 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   provincePillActive: { backgroundColor: '#2563EB' },
-  provincePillText: { fontSize: 12, color: '#374151', fontWeight: '600' },
+  provincePillText: { fontSize: 11, color: '#374151', fontWeight: '600' },
   provincePillTextActive: { color: '#FFFFFF' },
   countBadge: {
     position: 'absolute',
-    alignSelf: 'center',
     left: 16,
     backgroundColor: 'rgba(255,255,255,0.95)',
     borderRadius: 20,
@@ -340,9 +537,10 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
+    zIndex: 10,
   },
   countBadgeText: { fontSize: 12, color: '#374151', fontWeight: '600' },
-  myLocationBtn: {
+  resetBtn: {
     position: 'absolute',
     right: 16,
     width: 46,
@@ -356,13 +554,15 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },
     elevation: 5,
+    zIndex: 10,
   },
-  myLocationIcon: { fontSize: 22 },
+  resetBtnIcon: { fontSize: 22 },
   previewContainer: {
     position: 'absolute',
     left: 24,
     right: 24,
     alignItems: 'center',
+    zIndex: 20,
   },
 });
 
