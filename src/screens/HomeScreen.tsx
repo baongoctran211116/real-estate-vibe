@@ -1,5 +1,5 @@
 // filename: src/screens/HomeScreen.tsx
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import { usePropertyList } from '../features/property/usePropertyList';
-import { useFilterStore, PROVINCES } from '../store/useFilterStore';
+import { useFilterStore, PROVINCES, PROVINCE_REGIONS } from '../store/useFilterStore';
 import PropertyCard from '../components/PropertyCard';
 import SearchBar from '../components/SearchBar';
 import FilterPanel from '../components/FilterPanel';
@@ -29,9 +29,10 @@ const HomeScreen: React.FC = () => {
   const [filterVisible, setFilterVisible] = React.useState(false);
   const [refreshing, setRefreshing] = React.useState(false);
 
-  const filters = useFilterStore((s) => s.filters);
+  const filters   = useFilterStore((s) => s.filters);
   const setFilter = useFilterStore((s) => s.setFilter);
   const hasActive = useFilterStore((s) => s.hasActiveFilters());
+  const flyMapTo  = useFilterStore((s) => s.flyMapTo);
 
   const {
     properties,
@@ -49,15 +50,24 @@ const HomeScreen: React.FC = () => {
   }, [refetch]);
 
   const handleEndReached = useCallback(() => {
-    if (hasNextPage && !isFetchingNextPage) {
-      fetchNextPage();
-    }
+    if (hasNextPage && !isFetchingNextPage) fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
+  const handleProvinceSelect = useCallback(
+    (province: Province) => {
+      const isDeselect = filters.province === province;
+      setFilter('province', isDeselect ? undefined : province);
+
+      if (!isDeselect && PROVINCE_REGIONS[province]) {
+        const region = PROVINCE_REGIONS[province];
+        flyMapTo(region.lat, region.lng, region.zoom);
+      }
+    },
+    [filters.province, setFilter, flyMapTo]
+  );
+
   const renderItem = useCallback(
-    ({ item }: ListRenderItemInfo<Property>) => (
-      <PropertyCard property={item} />
-    ),
+    ({ item }: ListRenderItemInfo<Property>) => <PropertyCard property={item} />,
     []
   );
 
@@ -66,7 +76,7 @@ const HomeScreen: React.FC = () => {
   const ListHeader = useCallback(
     () => (
       <View style={styles.listHeader}>
-        {/* Hero section */}
+        {/* Hero */}
         <View style={[styles.hero, { paddingTop: insets.top + 12 }]}>
           <View style={styles.heroTop}>
             <View>
@@ -82,18 +92,18 @@ const HomeScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
 
-          {/* Search bar — navigates to Search tab */}
+          {/* Search bar — taps navigate to Search tab */}
           <TouchableOpacity
-            onPress={() => navigation.navigate('MainTabs', { screen: 'Search' } as any)}
+            onPress={() =>
+              (navigation as any).navigate('MainTabs', { screen: 'Search' })
+            }
             activeOpacity={0.85}
-            style={styles.searchBarWrapper}
           >
             <SearchBar
               value=""
               onChangeText={() => {}}
               placeholder="Tìm theo tên, quận, thành phố..."
               editable={false}
-              onPress={() => navigation.navigate('MainTabs', { screen: 'Search' } as any)}
             />
           </TouchableOpacity>
         </View>
@@ -112,9 +122,7 @@ const HomeScreen: React.FC = () => {
                 key={p}
                 label={p}
                 selected={filters.province === p}
-                onPress={() =>
-                  setFilter('province', filters.province === p ? undefined : p as Province)
-                }
+                onPress={() => handleProvinceSelect(p as Province)}
               />
             ))}
           </View>
@@ -123,15 +131,23 @@ const HomeScreen: React.FC = () => {
         {/* Section title */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>
-            {filters.province ? `BĐS tại ${filters.province}` : 'Tất cả bất động sản'}
+            {filters.province
+              ? `BĐS tại ${filters.province}`
+              : 'Tất cả bất động sản'}
           </Text>
-          <Text style={styles.sectionCount}>
-            {properties.length}+ tin
-          </Text>
+          <Text style={styles.sectionCount}>{properties.length}+ tin</Text>
         </View>
       </View>
     ),
-    [insets.top, hasActive, filters.province, properties.length, navigation, setFilter]
+    [
+      insets.top,
+      hasActive,
+      filters.province,
+      properties.length,
+      navigation,
+      setFilter,
+      handleProvinceSelect,
+    ]
   );
 
   const ListFooter = useCallback(
@@ -151,7 +167,9 @@ const HomeScreen: React.FC = () => {
         <View style={styles.empty}>
           <Text style={styles.emptyEmoji}>🏘️</Text>
           <Text style={styles.emptyTitle}>Không có kết quả</Text>
-          <Text style={styles.emptySubtitle}>Thử thay đổi bộ lọc để xem thêm</Text>
+          <Text style={styles.emptySubtitle}>
+            Thử thay đổi bộ lọc để xem thêm
+          </Text>
         </View>
       ) : null,
     [isLoading]
@@ -208,7 +226,12 @@ const ProvinceChip: React.FC<{
     onPress={onPress}
     activeOpacity={0.75}
   >
-    <Text style={[styles.provinceChipText, selected && styles.provinceChipTextSelected]}>
+    <Text
+      style={[
+        styles.provinceChipText,
+        selected && styles.provinceChipTextSelected,
+      ]}
+    >
       {label}
     </Text>
   </TouchableOpacity>
@@ -238,8 +261,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
-  heroGreeting: { fontSize: 14, color: 'rgba(255,255,255,0.8)', fontWeight: '500' },
-  heroTitle: { fontSize: 24, color: '#FFFFFF', fontWeight: '800', marginTop: 2 },
+  heroGreeting: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.8)',
+    fontWeight: '500',
+  },
+  heroTitle: {
+    fontSize: 24,
+    color: '#FFFFFF',
+    fontWeight: '800',
+    marginTop: 2,
+  },
   filterBtn: {
     width: 42,
     height: 42,
@@ -261,7 +293,6 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#2563EB',
   },
-  searchBarWrapper: { marginTop: 4 },
 
   // Province chips
   quickFilters: {
@@ -308,7 +339,6 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { fontSize: 17, fontWeight: '800', color: '#111827' },
   sectionCount: { fontSize: 13, color: '#6B7280', fontWeight: '500' },
-
   listHeader: { marginBottom: 4 },
 
   // Footer / empty
@@ -320,14 +350,14 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
   },
   footerText: { fontSize: 13, color: '#6B7280' },
-  empty: {
-    alignItems: 'center',
-    paddingTop: 60,
-    gap: 10,
-  },
+  empty: { alignItems: 'center', paddingTop: 60, gap: 10 },
   emptyEmoji: { fontSize: 48 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: '#374151' },
-  emptySubtitle: { fontSize: 14, color: '#9CA3AF', textAlign: 'center' },
+  emptySubtitle: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    textAlign: 'center',
+  },
 });
 
 export default HomeScreen;

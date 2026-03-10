@@ -1,9 +1,8 @@
 // filename: src/screens/MapScreen.tsx
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   StyleSheet,
-  Dimensions,
   ActivityIndicator,
   Text,
   TouchableOpacity,
@@ -12,21 +11,15 @@ import {
 import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMapProperties } from '../features/map/useMapProperties';
-import { useFilterStore, PROVINCES } from '../store/useFilterStore';
+import {
+  useFilterStore,
+  PROVINCES,
+  PROVINCE_REGIONS,
+} from '../store/useFilterStore';
 import PropertyPreviewCard from '../components/PropertyPreviewCard';
 import SearchBar from '../components/SearchBar';
 import FilterPanel from '../components/FilterPanel';
 import { Property, Province } from '../types/property';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-const PROVINCE_REGIONS: Record<Province, { lat: number; lng: number; zoom: number }> = {
-  Hanoi:              { lat: 21.028, lng: 105.854, zoom: 12 },
-  'Ho Chi Minh City': { lat: 10.776, lng: 106.701, zoom: 12 },
-  'Da Nang':          { lat: 16.054, lng: 108.202, zoom: 12 },
-  'Hai Phong':        { lat: 20.865, lng: 106.684, zoom: 12 },
-  'Can Tho':          { lat: 10.034, lng: 105.788, zoom: 12 },
-};
 
 const MapScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -39,13 +32,41 @@ const MapScreen: React.FC = () => {
 
   const previewAnim = useRef(new Animated.Value(0)).current;
 
-  const filters = useFilterStore((s) => s.filters);
-  const setFilter = useFilterStore((s) => s.setFilter);
-  const hasActive = useFilterStore((s) => s.hasActiveFilters());
+  const filters        = useFilterStore((s) => s.filters);
+  const setFilter      = useFilterStore((s) => s.setFilter);
+  const hasActive      = useFilterStore((s) => s.hasActiveFilters());
+  const mapFlyToTarget = useFilterStore((s) => s.mapFlyToTarget);
+  const clearMapFlyTo  = useFilterStore((s) => s.clearMapFlyTo);
 
   const { properties, isLoading } = useMapProperties();
 
-  // ─── Filter properties locally ───────────────────────────
+  // ─── Listen for external fly-to commands (from HomeScreen / DetailScreen) ──
+  useEffect(() => {
+    if (!mapFlyToTarget || !mapReady) return;
+
+    webViewRef.current?.postMessage(
+      JSON.stringify({
+        type: 'FLY_TO',
+        lat: mapFlyToTarget.lat,
+        lng: mapFlyToTarget.lng,
+        zoom: mapFlyToTarget.zoom,
+      })
+    );
+    clearMapFlyTo();
+  }, [mapFlyToTarget, mapReady, clearMapFlyTo]);
+
+  // ─── Listen for province filter change → auto zoom ───────
+  useEffect(() => {
+    if (!mapReady) return;
+    if (filters.province && PROVINCE_REGIONS[filters.province]) {
+      const region = PROVINCE_REGIONS[filters.province];
+      webViewRef.current?.postMessage(
+        JSON.stringify({ type: 'FLY_TO', lat: region.lat, lng: region.lng, zoom: region.zoom })
+      );
+    }
+  }, [filters.province, mapReady]);
+
+  // ─── Filtered properties ──────────────────────────────────
   const filteredProperties = React.useMemo(() => {
     let list = properties;
     if (searchText.trim()) {
@@ -61,22 +82,21 @@ const MapScreen: React.FC = () => {
   }, [properties, searchText]);
 
   // ─── Build Leaflet HTML ───────────────────────────────────
-  const buildMapHTML = useCallback(
-    (props: Property[]) => {
-      const markersJson = JSON.stringify(
-        props.map((p) => ({
-          id: p.id,
-          lat: p.latitude,
-          lng: p.longitude,
-          price: formatPriceShort(p.price),
-          title: p.title,
-          district: p.district,
-          province: p.province,
-          type: p.propertyType,
-        }))
-      );
+  const buildMapHTML = useCallback((props: Property[]) => {
+    const markersJson = JSON.stringify(
+      props.map((p) => ({
+        id:       p.id,
+        lat:      p.latitude,
+        lng:      p.longitude,
+        price:    formatPriceShort(p.price),
+        title:    p.title,
+        district: p.district,
+        province: p.province,
+        type:     p.propertyType,
+      }))
+    );
 
-      return `
+    return `
 <!DOCTYPE html>
 <html>
 <head>
@@ -90,7 +110,6 @@ const MapScreen: React.FC = () => {
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body, #map { width: 100%; height: 100%; }
 
-    /* Custom price marker */
     .price-marker {
       background: #2563EB;
       color: white;
@@ -102,33 +121,41 @@ const MapScreen: React.FC = () => {
       box-shadow: 0 2px 8px rgba(37,99,235,0.45);
       border: 2px solid white;
       cursor: pointer;
+      position: relative;
       transition: transform 0.15s;
-    }
-    .price-marker:hover { transform: scale(1.08); }
-    .price-marker.selected {
-      background: #1D4ED8;
-      transform: scale(1.12);
-      z-index: 999 !important;
     }
     .price-marker::after {
       content: '';
       position: absolute;
-      bottom: -7px;
+      bottom: -8px;
       left: 50%;
       transform: translateX(-50%);
       border-left: 6px solid transparent;
       border-right: 6px solid transparent;
       border-top: 7px solid #2563EB;
     }
-    .price-marker.selected::after {
-      border-top-color: #1D4ED8;
+    .price-marker.selected {
+      background: #1D4ED8;
+      transform: scale(1.15);
+      box-shadow: 0 4px 16px rgba(37,99,235,0.6);
+      z-index: 1000 !important;
+    }
+    .price-marker.selected::after { border-top-color: #1D4ED8; }
+
+    /* Pulse animation for jumped-to marker */
+    .price-marker.pulse {
+      animation: pulse 1s ease-in-out 3;
+    }
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0 rgba(37,99,235,0.7); }
+      70%  { box-shadow: 0 0 0 12px rgba(37,99,235,0); }
+      100% { box-shadow: 0 0 0 0 rgba(37,99,235,0); }
     }
 
-    /* Cluster override */
     .marker-cluster-small,
     .marker-cluster-medium,
     .marker-cluster-large {
-      background-color: rgba(37,99,235,0.25) !important;
+      background-color: rgba(37,99,235,0.22) !important;
     }
     .marker-cluster-small div,
     .marker-cluster-medium div,
@@ -138,32 +165,21 @@ const MapScreen: React.FC = () => {
       font-weight: 700 !important;
       font-size: 13px !important;
     }
-
-    /* OSM attribution tweak */
-    .leaflet-control-attribution {
-      font-size: 9px;
-    }
+    .leaflet-control-attribution { font-size: 9px; }
   </style>
 </head>
 <body>
 <div id="map"></div>
 <script>
-  // Init map centered on Vietnam
-  const map = L.map('map', {
-    zoomControl: false,
-    attributionControl: true,
-  }).setView([16.0, 106.5], 6);
+  const map = L.map('map', { zoomControl: false }).setView([16.0, 106.5], 6);
 
-  // OpenStreetMap tile layer — no API key needed
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     maxZoom: 19,
   }).addTo(map);
 
-  // Zoom control bottom-right
   L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-  // Marker cluster group
   const clusterGroup = L.markerClusterGroup({
     maxClusterRadius: 50,
     showCoverageOnHover: false,
@@ -171,19 +187,34 @@ const MapScreen: React.FC = () => {
     zoomToBoundsOnClick: true,
     iconCreateFunction: function(cluster) {
       const count = cluster.getChildCount();
+      const size  = count < 10 ? 'small' : count < 50 ? 'medium' : 'large';
       return L.divIcon({
         html: '<div>' + count + '</div>',
-        className: 'marker-cluster marker-cluster-' + (count < 10 ? 'small' : count < 50 ? 'medium' : 'large'),
+        className: 'marker-cluster marker-cluster-' + size,
         iconSize: [40, 40],
       });
     },
   });
 
-  const markers = ${markersJson};
+  const markers  = ${markersJson};
   let selectedId = null;
   const markerMap = {};
 
-  // Create custom price markers
+  function deselectAll() {
+    if (selectedId) {
+      const el = document.getElementById('marker-' + selectedId);
+      if (el) el.classList.remove('selected', 'pulse');
+      selectedId = null;
+    }
+  }
+
+  function selectMarker(id) {
+    deselectAll();
+    selectedId = id;
+    const el = document.getElementById('marker-' + id);
+    if (el) el.classList.add('selected');
+  }
+
   markers.forEach(function(p) {
     const icon = L.divIcon({
       html: '<div class="price-marker" id="marker-' + p.id + '">' + p.price + '</div>',
@@ -194,69 +225,79 @@ const MapScreen: React.FC = () => {
 
     const marker = L.marker([p.lat, p.lng], { icon });
 
-    marker.on('click', function() {
-      // Deselect previous
-      if (selectedId && markerMap[selectedId]) {
-        const prevEl = document.getElementById('marker-' + selectedId);
-        if (prevEl) prevEl.classList.remove('selected');
-      }
-
-      // Select current
-      selectedId = p.id;
-      const el = document.getElementById('marker-' + p.id);
-      if (el) el.classList.add('selected');
-
-      // Send to React Native
+    marker.on('click', function(e) {
+      L.DomEvent.stopPropagation(e);
+      selectMarker(p.id);
       window.ReactNativeWebView.postMessage(JSON.stringify({
         type: 'MARKER_PRESS',
         propertyId: p.id,
       }));
     });
 
-    markerMap[p.id] = marker;
+    markerMap[p.id] = { leafletMarker: marker, data: p };
     clusterGroup.addLayer(marker);
   });
 
   map.addLayer(clusterGroup);
 
-  // Tap on map to deselect
   map.on('click', function() {
-    if (selectedId) {
-      const el = document.getElementById('marker-' + selectedId);
-      if (el) el.classList.remove('selected');
-      selectedId = null;
-    }
+    deselectAll();
     window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MAP_PRESS' }));
   });
 
-  // Ready signal
-  window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MAP_READY' }));
+  // ── Commands from React Native ──────────────────────────
+  document.addEventListener('message', handleMessage);
+  window.addEventListener('message',   handleMessage);
 
-  // Receive commands from React Native
-  window.addEventListener('message', function(e) {
+  function handleMessage(e) {
     try {
       const msg = JSON.parse(e.data);
+
       if (msg.type === 'FLY_TO') {
-        map.flyTo([msg.lat, msg.lng], msg.zoom, { duration: 0.8 });
+        map.flyTo([msg.lat, msg.lng], msg.zoom, { duration: 0.9, easeLinearity: 0.5 });
       }
+
       if (msg.type === 'DESELECT') {
-        if (selectedId) {
-          const el = document.getElementById('marker-' + selectedId);
-          if (el) el.classList.remove('selected');
-          selectedId = null;
-        }
+        deselectAll();
+      }
+
+      // Jump to specific property: unspiderfy clusters, zoom in, select + pulse marker
+      if (msg.type === 'JUMP_TO_PROPERTY') {
+        const target = markerMap[msg.propertyId];
+        if (!target) return;
+
+        // Zoom in first, then select after animation
+        map.flyTo([target.data.lat, target.data.lng], 16, { duration: 1.0 });
+
+        map.once('moveend', function() {
+          // Force cluster to reveal the marker
+          clusterGroup.zoomToShowLayer(target.leafletMarker, function() {
+            selectMarker(msg.propertyId);
+            // Add pulse effect
+            const el = document.getElementById('marker-' + msg.propertyId);
+            if (el) {
+              el.classList.add('pulse');
+              setTimeout(function() { el.classList.remove('pulse'); }, 3500);
+            }
+          });
+
+          // Notify RN that jump is done
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'JUMP_DONE',
+            propertyId: msg.propertyId,
+          }));
+        });
       }
     } catch(err) {}
-  });
+  }
+
+  window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MAP_READY' }));
 </script>
 </body>
-</html>
-      `;
-    },
-    []
-  );
+</html>`;
+  }, []);
 
-  // ─── Handle messages from WebView ────────────────────────
+  // ─── WebView message handler ──────────────────────────────
   const handleWebViewMessage = useCallback(
     (event: any) => {
       try {
@@ -268,15 +309,7 @@ const MapScreen: React.FC = () => {
 
         if (msg.type === 'MARKER_PRESS') {
           const property = filteredProperties.find((p) => p.id === msg.propertyId);
-          if (property) {
-            setSelectedProperty(property);
-            Animated.spring(previewAnim, {
-              toValue: 1,
-              useNativeDriver: true,
-              tension: 60,
-              friction: 10,
-            }).start();
-          }
+          if (property) showPreview(property);
         }
 
         if (msg.type === 'MAP_PRESS') {
@@ -284,36 +317,49 @@ const MapScreen: React.FC = () => {
         }
       } catch (e) {}
     },
-    [filteredProperties, previewAnim]
+    [filteredProperties]
   );
 
-  // ─── Hide preview ─────────────────────────────────────────
+  const showPreview = useCallback((property: Property) => {
+    setSelectedProperty(property);
+    Animated.spring(previewAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 60,
+      friction: 10,
+    }).start();
+  }, [previewAnim]);
+
   const hidePreview = useCallback(() => {
     Animated.timing(previewAnim, {
       toValue: 0,
       duration: 200,
       useNativeDriver: true,
     }).start(() => setSelectedProperty(null));
-
-    // Deselect marker in WebView
     webViewRef.current?.postMessage(JSON.stringify({ type: 'DESELECT' }));
   }, [previewAnim]);
 
-  // ─── Fly to province ──────────────────────────────────────
-  const flyToProvince = useCallback(
+  // ─── Province pill tap ────────────────────────────────────
+  const handleProvincePill = useCallback(
     (province: Province) => {
-      const region = PROVINCE_REGIONS[province];
-      setFilter('province', filters.province === province ? undefined : province);
-      if (filters.province !== province) {
+      const isDeselect = filters.province === province;
+      setFilter('province', isDeselect ? undefined : province);
+
+      if (!isDeselect) {
+        const region = PROVINCE_REGIONS[province];
         webViewRef.current?.postMessage(
           JSON.stringify({ type: 'FLY_TO', lat: region.lat, lng: region.lng, zoom: region.zoom })
+        );
+      } else {
+        // Zoom out to full Vietnam view
+        webViewRef.current?.postMessage(
+          JSON.stringify({ type: 'FLY_TO', lat: 16.0, lng: 106.5, zoom: 6 })
         );
       }
     },
     [filters.province, setFilter]
   );
 
-  // ─── Rebuild HTML when filtered properties change ─────────
   const mapHTML = React.useMemo(
     () => buildMapHTML(filteredProperties),
     [filteredProperties, buildMapHTML]
@@ -321,7 +367,6 @@ const MapScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      {/* OSM Map via WebView */}
       <WebView
         ref={webViewRef}
         source={{ html: mapHTML }}
@@ -335,7 +380,6 @@ const MapScreen: React.FC = () => {
         originWhitelist={['*']}
       />
 
-      {/* Loading overlay */}
       {(isLoading || !mapReady) && (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="large" color="#2563EB" />
@@ -343,7 +387,7 @@ const MapScreen: React.FC = () => {
         </View>
       )}
 
-      {/* Top search + filter */}
+      {/* Search + filter bar */}
       <View style={[styles.topBar, { top: insets.top + 10 }]}>
         <View style={styles.searchWrapper}>
           <SearchBar
@@ -367,11 +411,8 @@ const MapScreen: React.FC = () => {
         {PROVINCES.map((p) => (
           <TouchableOpacity
             key={p}
-            style={[
-              styles.provincePill,
-              filters.province === p && styles.provincePillActive,
-            ]}
-            onPress={() => flyToProvince(p as Province)}
+            style={[styles.provincePill, filters.province === p && styles.provincePillActive]}
+            onPress={() => handleProvincePill(p as Province)}
             activeOpacity={0.8}
           >
             <Text
@@ -389,12 +430,10 @@ const MapScreen: React.FC = () => {
 
       {/* Count badge */}
       <View style={[styles.countBadge, { top: insets.top + 120 }]}>
-        <Text style={styles.countBadgeText}>
-          🏠 {filteredProperties.length} bất động sản
-        </Text>
+        <Text style={styles.countBadgeText}>🏠 {filteredProperties.length} bất động sản</Text>
       </View>
 
-      {/* Reset view button */}
+      {/* Reset view */}
       <TouchableOpacity
         style={[styles.resetBtn, { bottom: 100 + insets.bottom }]}
         onPress={() =>
@@ -406,7 +445,7 @@ const MapScreen: React.FC = () => {
         <Text style={styles.resetBtnIcon}>🎯</Text>
       </TouchableOpacity>
 
-      {/* Property preview card */}
+      {/* Property preview */}
       {selectedProperty && (
         <Animated.View
           style={[
@@ -425,10 +464,7 @@ const MapScreen: React.FC = () => {
             },
           ]}
         >
-          <PropertyPreviewCard
-            property={selectedProperty}
-            onClose={hidePreview}
-          />
+          <PropertyPreviewCard property={selectedProperty} onClose={hidePreview} />
         </Animated.View>
       )}
 
@@ -437,14 +473,9 @@ const MapScreen: React.FC = () => {
   );
 };
 
-// ─── Helper ───────────────────────────────────────────────
 function formatPriceShort(price: number): string {
-  if (price >= 1_000_000_000) {
-    return parseFloat((price / 1_000_000_000).toFixed(1)) + ' tỷ';
-  }
-  if (price >= 1_000_000) {
-    return Math.round(price / 1_000_000) + ' tr';
-  }
+  if (price >= 1_000_000_000) return parseFloat((price / 1_000_000_000).toFixed(1)) + ' tỷ';
+  if (price >= 1_000_000)     return Math.round(price / 1_000_000) + ' tr';
   return price.toString();
 }
 
@@ -460,109 +491,59 @@ const styles = StyleSheet.create({
   },
   loadingText: { fontSize: 14, color: '#6B7280', fontWeight: '500' },
   topBar: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    zIndex: 10,
+    position: 'absolute', left: 16, right: 16,
+    flexDirection: 'row', alignItems: 'center', gap: 10, zIndex: 10,
   },
   searchWrapper: { flex: 1 },
   mapSearchBar: {
     backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 5,
+    shadowColor: '#000', shadowOpacity: 0.12,
+    shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 5,
   },
   filterBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: 14,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
+    width: 46, height: 46, borderRadius: 14, backgroundColor: '#FFFFFF',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOpacity: 0.12,
+    shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4,
   },
   filterBtnActive: { backgroundColor: '#EFF6FF' },
   filterBtnIcon: { fontSize: 20 },
   filterDot: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#2563EB',
+    position: 'absolute', top: 8, right: 8,
+    width: 8, height: 8, borderRadius: 4, backgroundColor: '#2563EB',
   },
   provincePills: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    paddingHorizontal: 12,
-    gap: 6,
-    zIndex: 10,
-    flexWrap: 'nowrap',
+    position: 'absolute', left: 0, right: 0,
+    flexDirection: 'row', paddingHorizontal: 12, gap: 6, zIndex: 10,
   },
   provincePill: {
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 20,
+    paddingHorizontal: 10, paddingVertical: 7, borderRadius: 20,
     backgroundColor: 'rgba(255,255,255,0.95)',
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
+    shadowColor: '#000', shadowOpacity: 0.1,
+    shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3,
   },
   provincePillActive: { backgroundColor: '#2563EB' },
   provincePillText: { fontSize: 11, color: '#374151', fontWeight: '600' },
   provincePillTextActive: { color: '#FFFFFF' },
   countBadge: {
-    position: 'absolute',
-    left: 16,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
-    zIndex: 10,
+    position: 'absolute', left: 16,
+    backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 20,
+    paddingHorizontal: 14, paddingVertical: 6,
+    shadowColor: '#000', shadowOpacity: 0.1,
+    shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3, zIndex: 10,
   },
   countBadgeText: { fontSize: 12, color: '#374151', fontWeight: '600' },
   resetBtn: {
-    position: 'absolute',
-    right: 16,
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 5,
-    zIndex: 10,
+    position: 'absolute', right: 16,
+    width: 46, height: 46, borderRadius: 23, backgroundColor: '#FFFFFF',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOpacity: 0.15,
+    shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 5, zIndex: 10,
   },
   resetBtnIcon: { fontSize: 22 },
   previewContainer: {
-    position: 'absolute',
-    left: 24,
-    right: 24,
-    alignItems: 'center',
-    zIndex: 20,
+    position: 'absolute', left: 24, right: 24,
+    alignItems: 'center', zIndex: 20,
   },
 });
 

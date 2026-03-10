@@ -5,10 +5,20 @@ import { PropertyFilters, Province, PropertyType } from '../types/property';
 interface FilterState {
   filters: PropertyFilters;
   searchKeyword: string;
+  // Mới: trigger fly-to map từ bất kỳ screen nào
+  mapFlyToTarget: {
+    lat: number;
+    lng: number;
+    zoom: number;
+    timestamp: number; // force re-trigger dù cùng tọa độ
+  } | null;
+
   setFilter: <K extends keyof PropertyFilters>(key: K, value: PropertyFilters[K]) => void;
   setSearchKeyword: (keyword: string) => void;
   resetFilters: () => void;
   hasActiveFilters: () => boolean;
+  flyMapTo: (lat: number, lng: number, zoom: number) => void;
+  clearMapFlyTo: () => void;
 }
 
 const DEFAULT_FILTERS: PropertyFilters = {};
@@ -16,6 +26,7 @@ const DEFAULT_FILTERS: PropertyFilters = {};
 export const useFilterStore = create<FilterState>((set, get) => ({
   filters: DEFAULT_FILTERS,
   searchKeyword: '',
+  mapFlyToTarget: null,
 
   setFilter: (key, value) => {
     set((state) => ({
@@ -23,13 +34,9 @@ export const useFilterStore = create<FilterState>((set, get) => ({
     }));
   },
 
-  setSearchKeyword: (keyword: string) => {
-    set({ searchKeyword: keyword });
-  },
+  setSearchKeyword: (keyword) => set({ searchKeyword: keyword }),
 
-  resetFilters: () => {
-    set({ filters: DEFAULT_FILTERS, searchKeyword: '' });
-  },
+  resetFilters: () => set({ filters: DEFAULT_FILTERS, searchKeyword: '' }),
 
   hasActiveFilters: () => {
     const { filters, searchKeyword } = get();
@@ -38,9 +45,15 @@ export const useFilterStore = create<FilterState>((set, get) => ({
       Object.values(filters).some((v) => v !== undefined && v !== null && v !== '')
     );
   },
+
+  flyMapTo: (lat, lng, zoom) => {
+    set({ mapFlyToTarget: { lat, lng, zoom, timestamp: Date.now() } });
+  },
+
+  clearMapFlyTo: () => set({ mapFlyToTarget: null }),
 }));
 
-// Convenience selectors
+// ─── Constants ────────────────────────────────────────────
 export const PROVINCES: Province[] = [
   'Hanoi',
   'Ho Chi Minh City',
@@ -58,8 +71,16 @@ export const PROPERTY_TYPES: { label: string; value: PropertyType }[] = [
 ];
 
 export const PRICE_RANGES: { label: string; min: number; max: number }[] = [
-  { label: 'Under 2B', min: 0, max: 2_000_000_000 },
-  { label: '2B – 5B', min: 2_000_000_000, max: 5_000_000_000 },
-  { label: '5B – 10B', min: 5_000_000_000, max: 10_000_000_000 },
-  { label: 'Above 10B', min: 10_000_000_000, max: 999_000_000_000 },
+  { label: 'Dưới 2 tỷ',    min: 0,              max: 2_000_000_000 },
+  { label: '2 – 5 tỷ',     min: 2_000_000_000,  max: 5_000_000_000 },
+  { label: '5 – 10 tỷ',    min: 5_000_000_000,  max: 10_000_000_000 },
+  { label: 'Trên 10 tỷ',   min: 10_000_000_000, max: 999_000_000_000 },
 ];
+
+export const PROVINCE_REGIONS: Record<Province, { lat: number; lng: number; zoom: number }> = {
+  'Hanoi':              { lat: 21.028,  lng: 105.854, zoom: 12 },
+  'Ho Chi Minh City':   { lat: 10.776,  lng: 106.701, zoom: 12 },
+  'Da Nang':            { lat: 16.054,  lng: 108.202, zoom: 12 },
+  'Hai Phong':          { lat: 20.865,  lng: 106.684, zoom: 12 },
+  'Can Tho':            { lat: 10.034,  lng: 105.788, zoom: 12 },
+};
