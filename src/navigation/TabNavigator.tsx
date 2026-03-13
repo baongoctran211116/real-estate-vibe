@@ -4,39 +4,42 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, View, Text } from 'react-native';
 import { TabParamList } from './types';
-import HomeScreen from '../screens/HomeScreen';
-import SearchScreen from '../screens/SearchScreen';
 import MapScreen from '../screens/MapScreen';
 import FavoritesScreen from '../screens/FavoritesScreen';
+import AIAssistantScreen from '../screens/AIAssistantScreen';
+import MeScreen from '../screens/MeScreen';
 import { useFavoriteStore } from '../store/useFavoriteStore';
 
 const Tab = createBottomTabNavigator<TabParamList>();
 
-const TAB_ICONS: Record<string, string> = {
-  Home: '🏠',
-  Search: '🔍',
-  Map: '🗺️',
-  Favorites: '❤️',
+const TAB_CONFIG: Record<string, { icon: string; activeColor: string }> = {
+  Map:         { icon: '🗺️',  activeColor: '#2563EB' },
+  Favorites:   { icon: '❤️',  activeColor: '#EF4444' },
+  AIAssistant: { icon: '🤖',  activeColor: '#7C3AED' },
+  Me:          { icon: '👤',  activeColor: '#059669' },
 };
 
 interface TabIconProps {
-  label: string;
+  tabKey: string;
   focused: boolean;
   badgeCount?: number;
 }
 
-const TabIcon: React.FC<TabIconProps> = ({ label, focused, badgeCount }) => (
-  <View style={styles.iconWrapper}>
-    <Text style={[styles.emoji, focused && styles.emojiFocused]}>
-      {TAB_ICONS[label]}
-    </Text>
-    {badgeCount !== undefined && badgeCount > 0 && (
-      <View style={styles.badge}>
-        <Text style={styles.badgeText}>{badgeCount}</Text>
-      </View>
-    )}
-  </View>
-);
+const TabIcon: React.FC<TabIconProps> = ({ tabKey, focused, badgeCount }) => {
+  const { icon } = TAB_CONFIG[tabKey];
+  return (
+    <View style={styles.iconWrapper}>
+      <Text style={[styles.emoji, !focused && styles.emojiInactive]}>
+        {icon}
+      </Text>
+      {badgeCount !== undefined && badgeCount > 0 && (
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>{badgeCount > 99 ? '99+' : badgeCount}</Text>
+        </View>
+      )}
+    </View>
+  );
+};
 
 const TabNavigator: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -47,62 +50,62 @@ const TabNavigator: React.FC = () => {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          height: 60 + insets.bottom,
+          height: 64 + insets.bottom,
           paddingBottom: insets.bottom,
           backgroundColor: '#FFFFFF',
           borderTopWidth: 1,
           borderTopColor: '#F0F0F0',
-          elevation: 8,
+          elevation: 12,
           shadowColor: '#000',
-          shadowOpacity: 0.08,
-          shadowRadius: 8,
-          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.10,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: -3 },
         },
         tabBarActiveTintColor: '#2563EB',
         tabBarInactiveTintColor: '#9CA3AF',
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '600',
-          marginTop: -4,
+          marginTop: -2,
         },
       }}
     >
-      <Tab.Screen
-        name="Home"
-        component={HomeScreen}
-        options={{
-          tabBarLabel: 'Trang chủ',
-          tabBarIcon: ({ focused }) => <TabIcon label="Home" focused={focused} />,
-        }}
-      />
-      <Tab.Screen
-        name="Search"
-        component={SearchScreen}
-        options={{
-          tabBarLabel: 'Tìm kiếm',
-          tabBarIcon: ({ focused }) => <TabIcon label="Search" focused={focused} />,
-        }}
-      />
       <Tab.Screen
         name="Map"
         component={MapScreen}
         options={{
           tabBarLabel: 'Bản đồ',
-          tabBarIcon: ({ focused }) => <TabIcon label="Map" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon tabKey="Map" focused={focused} />,
+          tabBarActiveTintColor: TAB_CONFIG.Map.activeColor,
         }}
       />
       <Tab.Screen
         name="Favorites"
         component={FavoritesScreen}
         options={{
-          tabBarLabel: 'Yêu thích',
+          tabBarLabel: 'Đã lưu',
           tabBarIcon: ({ focused }) => (
-            <TabIcon
-              label="Favorites"
-              focused={focused}
-              badgeCount={favoriteIds.size}
-            />
+            <TabIcon tabKey="Favorites" focused={focused} badgeCount={favoriteIds.size} />
           ),
+          tabBarActiveTintColor: TAB_CONFIG.Favorites.activeColor,
+        }}
+      />
+      <Tab.Screen
+        name="AIAssistant"
+        component={AIAssistantScreen}
+        options={{
+          tabBarLabel: 'Trợ lý AI',
+          tabBarIcon: ({ focused }) => <TabIcon tabKey="AIAssistant" focused={focused} />,
+          tabBarActiveTintColor: TAB_CONFIG.AIAssistant.activeColor,
+        }}
+      />
+      <Tab.Screen
+        name="Me"
+        component={MeScreen}
+        options={{
+          tabBarLabel: 'Tôi',
+          tabBarIcon: ({ focused }) => <TabIcon tabKey="Me" focused={focused} />,
+          tabBarActiveTintColor: TAB_CONFIG.Me.activeColor,
         }}
       />
     </Tab.Navigator>
@@ -113,20 +116,19 @@ const styles = StyleSheet.create({
   iconWrapper: {
     alignItems: 'center',
     justifyContent: 'center',
-    width: 32,
-    height: 32,
+    width: 36,
+    height: 36,
   },
   emoji: {
     fontSize: 22,
-    opacity: 0.6,
   },
-  emojiFocused: {
-    opacity: 1,
+  emojiInactive: {
+    opacity: 0.5,
   },
   badge: {
     position: 'absolute',
-    top: -4,
-    right: -8,
+    top: -2,
+    right: -6,
     backgroundColor: '#EF4444',
     borderRadius: 8,
     minWidth: 16,
@@ -134,6 +136,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 3,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
   },
   badgeText: {
     color: '#FFF',

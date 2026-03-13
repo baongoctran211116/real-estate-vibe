@@ -45,74 +45,81 @@ const PropertyPreviewCard: React.FC<PropertyPreviewCardProps> = ({
   }, [navigation, property.id, onClose]);
 
   return (
-    <TouchableOpacity
-      style={styles.card}
-      onPress={handlePress}
-      activeOpacity={0.93}
-    >
-      {/* Thumbnail */}
-      <FastImage
-        source={{
-          uri: property.images[0],
-          priority: FastImage.priority.high,
-        }}
-        style={styles.thumbnail}
-        resizeMode={FastImage.resizeMode.cover}
-      />
+    <View style={styles.wrapper}>
+      <TouchableOpacity
+        style={styles.card}
+        onPress={handlePress}
+        activeOpacity={0.93}
+      >
+        {/* Thumbnail */}
+        <FastImage
+          source={{
+            uri: property.images[0],
+            priority: FastImage.priority.high,
+          }}
+          style={styles.thumbnail}
+          resizeMode={FastImage.resizeMode.cover}
+        />
 
-      {/* Content */}
-      <View style={styles.content}>
-        <View style={styles.topRow}>
-          <PriceTag price={property.price} size="medium" />
-          <FavoriteButton propertyId={property.id} size={18} variant="bare" />
-        </View>
+        {/* Content */}
+        <View style={styles.content}>
+          <View style={styles.topRow}>
+            <PriceTag price={property.price} size="medium" />
+            <FavoriteButton propertyId={property.id} size={18} variant="bare" />
+          </View>
 
-        <Text style={styles.title} numberOfLines={1}>
-          {property.title}
-        </Text>
-
-        <View style={styles.locationRow}>
-          <Text style={styles.locationIcon}>📍</Text>
-          <Text style={styles.location} numberOfLines={1}>
-            {property.district}, {property.province}
+          <Text style={styles.title} numberOfLines={1}>
+            {property.title}
           </Text>
-        </View>
 
-        <View style={styles.statsRow}>
-          <View
-            style={[
-              styles.typeBadge,
-              { backgroundColor: getPropertyTypeColor(property.propertyType) },
-            ]}
-          >
-            <Text style={styles.typeBadgeText}>
-              {formatPropertyType(property.propertyType)}
+          <View style={styles.locationRow}>
+            <Text style={styles.locationIcon}>📍</Text>
+            <Text style={styles.location} numberOfLines={1}>
+              {property.district}, {property.province}
             </Text>
           </View>
-          <Text style={styles.stat}>📐 {formatArea(property.area)}</Text>
-          {property.bedrooms > 0 && (
-            <Text style={styles.stat}>🛏️ {property.bedrooms}</Text>
-          )}
-        </View>
-      </View>
 
-      {/* Close button */}
+          <View style={styles.statsRow}>
+            <View
+              style={[
+                styles.typeBadge,
+                { backgroundColor: getPropertyTypeColor(property.propertyType) },
+              ]}
+            >
+              <Text style={styles.typeBadgeText}>
+                {formatPropertyType(property.propertyType)}
+              </Text>
+            </View>
+            <Text style={styles.stat}>📐 {formatArea(property.area)}</Text>
+            {property.bedrooms > 0 && (
+              <Text style={styles.stat}>🛏️ {property.bedrooms}</Text>
+            )}
+          </View>
+        </View>
+      </TouchableOpacity>
+
+      {/* Close button — outside card so it's never overlapped */}
       {onClose && (
         <TouchableOpacity
           style={styles.closeBtn}
           onPress={onClose}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
           <Text style={styles.closeBtnText}>✕</Text>
         </TouchableOpacity>
       )}
-    </TouchableOpacity>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  card: {
+  wrapper: {
     width: CARD_WIDTH,
+    paddingTop: 14,      // space for close btn overflowing top edge
+    paddingRight: 14,    // space for close btn overflowing right edge
+  },
+  card: {
+    width: '100%',
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     flexDirection: 'row',
@@ -177,19 +184,25 @@ const styles = StyleSheet.create({
   },
   closeBtn: {
     position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(0,0,0,0.15)',
+    top: 0,
+    right: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#1F2937',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 10,
+    zIndex: 99,
   },
   closeBtnText: {
     color: '#FFF',
-    fontSize: 10,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '800',
   },
 });
 

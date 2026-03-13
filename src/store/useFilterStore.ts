@@ -78,9 +78,9 @@ export const PRICE_RANGES: { label: string; min: number; max: number }[] = [
 ];
 
 export const PROVINCE_REGIONS: Record<Province, { lat: number; lng: number; zoom: number }> = {
-  'Hanoi':              { lat: 21.028,  lng: 105.854, zoom: 12 },
-  'Ho Chi Minh City':   { lat: 10.776,  lng: 106.701, zoom: 12 },
-  'Da Nang':            { lat: 16.054,  lng: 108.202, zoom: 12 },
-  'Hai Phong':          { lat: 20.865,  lng: 106.684, zoom: 12 },
-  'Can Tho':            { lat: 10.034,  lng: 105.788, zoom: 12 },
+  'Hanoi':              { lat: 21.028,  lng: 105.854, zoom: 13 },
+  'Ho Chi Minh City':   { lat: 10.776,  lng: 106.701, zoom: 13 },
+  'Da Nang':            { lat: 16.054,  lng: 108.202, zoom: 13 },
+  'Hai Phong':          { lat: 20.865,  lng: 106.684, zoom: 13 },
+  'Can Tho':            { lat: 10.034,  lng: 105.788, zoom: 13 },
 };

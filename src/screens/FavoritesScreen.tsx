@@ -27,7 +27,7 @@ const FavoritesScreen: React.FC = () => {
   const ListHeader = useCallback(
     () => (
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-        <Text style={styles.headerTitle}>Yêu thích ❤️</Text>
+        <Text style={styles.headerTitle}>Đã lưu ❤️</Text>
         <Text style={styles.headerSubtitle}>
           {favoriteCount > 0
             ? `${favoriteCount} bất động sản đã lưu`
