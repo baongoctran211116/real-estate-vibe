@@ -4,10 +4,17 @@ import { useMemo } from 'react';
 import { getMapProperties } from '../../services/propertyService';
 import { useFilterStore } from '../../store/useFilterStore';
 import { useFavoriteStore } from '../../store/useFavoriteStore';
+import { useAuthStore } from '../../store/useAuthStore';
 
 export const useMapProperties = () => {
   const filters = useFilterStore((s) => s.filters);
-  const favoriteIds = useFavoriteStore((s) => s.favoriteIds);
+  const userId = useAuthStore((s) => s.user?.id);
+
+  // Reactive: lấy array ids theo user hiện tại
+  const favoriteIdsArray = useFavoriteStore((s) => {
+    const key = userId ?? '__guest__';
+    return Array.from(s.favoritesByUser[key] ?? []);
+  });
 
   const query = useQuery({
     queryKey: ['mapProperties', filters],
@@ -16,13 +23,14 @@ export const useMapProperties = () => {
   });
 
   const properties = useMemo(() => {
+    const idSet = new Set(favoriteIdsArray);
     return (
       query.data?.map((p) => ({
         ...p,
-        isFavorite: favoriteIds.has(p.id),
+        isFavorite: idSet.has(p.id),
       })) ?? []
     );
-  }, [query.data, favoriteIds]);
+  }, [query.data, favoriteIdsArray]);
 
   return {
     properties,

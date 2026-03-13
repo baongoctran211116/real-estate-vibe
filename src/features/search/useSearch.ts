@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { searchProperties } from '../../services/propertyService';
 import { useFilterStore } from '../../store/useFilterStore';
 import { useFavoriteStore } from '../../store/useFavoriteStore';
+import { useAuthStore } from '../../store/useAuthStore';
 import { useDebounce } from '../../hooks/useDebounce';
 import { Property } from '../../types/property';
 
@@ -14,7 +15,13 @@ export const useSearch = () => {
   const filters = useFilterStore((s) => s.filters);
   const setKeyword = useFilterStore((s) => s.setSearchKeyword);
   const resetFilters = useFilterStore((s) => s.resetFilters);
-  const favoriteIds = useFavoriteStore((s) => s.favoriteIds);
+  const userId = useAuthStore((s) => s.user?.id);
+
+  // Reactive: lấy array ids theo user hiện tại
+  const favoriteIdsArray = useFavoriteStore((s) => {
+    const key = userId ?? '__guest__';
+    return Array.from(s.favoritesByUser[key] ?? []);
+  });
 
   const debouncedKeyword = useDebounce(keyword, 400);
 
@@ -24,7 +31,7 @@ export const useSearch = () => {
       searchProperties(
         { keyword: debouncedKeyword, filters },
         pageParam as number,
-        PAGE_SIZE
+        PAGE_SIZE,
       ),
     getNextPageParam: (lastPage) =>
       lastPage.hasNextPage ? lastPage.page + 1 : undefined,
@@ -33,15 +40,16 @@ export const useSearch = () => {
   });
 
   const results = useMemo<Property[]>(() => {
+    const idSet = new Set(favoriteIdsArray);
     return (
       query.data?.pages.flatMap((page) =>
         page.data.map((p) => ({
           ...p,
-          isFavorite: favoriteIds.has(p.id),
+          isFavorite: idSet.has(p.id),
         }))
       ) ?? []
     );
-  }, [query.data, favoriteIds]);
+  }, [query.data, favoriteIdsArray]);
 
   return {
     keyword,

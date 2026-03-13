@@ -2,13 +2,13 @@
 import React, { memo, useCallback } from 'react';
 import {
   TouchableOpacity,
-  Text,
   StyleSheet,
   Animated,
   StyleProp,
   ViewStyle,
 } from 'react-native';
 import { useFavoriteStore } from '../store/useFavoriteStore';
+import { useAuthStore } from '../store/useAuthStore';
 
 interface FavoriteButtonProps {
   propertyId: string;
@@ -23,25 +23,21 @@ const FavoriteButton: React.FC<FavoriteButtonProps> = ({
   style,
   variant = 'circle',
 }) => {
-  const isFavorite = useFavoriteStore((s) => s.isFavorite(propertyId));
+  const userId = useAuthStore((s) => s.user?.id);
+
+  // Reactive per-user isFavorite
+  const isFav = useFavoriteStore((s) => s.isFavorite(propertyId, userId));
   const toggleFavorite = useFavoriteStore((s) => s.toggleFavorite);
+
   const scaleAnim = React.useRef(new Animated.Value(1)).current;
 
   const handlePress = useCallback(() => {
     Animated.sequence([
-      Animated.timing(scaleAnim, {
-        toValue: 1.35,
-        duration: 120,
-        useNativeDriver: true,
-      }),
-      Animated.timing(scaleAnim, {
-        toValue: 1,
-        duration: 120,
-        useNativeDriver: true,
-      }),
+      Animated.timing(scaleAnim, { toValue: 1.35, duration: 120, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 1, duration: 120, useNativeDriver: true }),
     ]).start();
-    toggleFavorite(propertyId);
-  }, [propertyId, toggleFavorite, scaleAnim]);
+    toggleFavorite(propertyId, userId);
+  }, [propertyId, userId, toggleFavorite, scaleAnim]);
 
   return (
     <TouchableOpacity
@@ -50,10 +46,8 @@ const FavoriteButton: React.FC<FavoriteButtonProps> = ({
       style={[variant === 'circle' && styles.circle, style]}
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
     >
-      <Animated.Text
-        style={[{ fontSize: size, transform: [{ scale: scaleAnim }] }]}
-      >
-        {isFavorite ? '❤️' : '🤍'}
+      <Animated.Text style={{ fontSize: size, transform: [{ scale: scaleAnim }] }}>
+        {isFav ? '❤️' : '🤍'}
       </Animated.Text>
     </TouchableOpacity>
   );
