@@ -9,6 +9,7 @@ import {
   Modal,
   SafeAreaView,
 } from 'react-native';
+
 import { useFilterStore, PROVINCES, PROPERTY_TYPES, PRICE_RANGES } from '../store/useFilterStore';
 import { Province, PropertyType } from '../types/property';
 

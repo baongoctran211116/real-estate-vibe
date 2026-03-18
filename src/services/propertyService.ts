@@ -13,6 +13,28 @@ const apiClient = axios.create({
   },
 });
 
+
+// TODO DEBUG: Thêm ngay dưới dòng tạo authApiClient
+apiClient.interceptors.request.use((config) => {  
+  console.log(`[API →] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
+  console.log(`[API →] body:`, JSON.stringify(config.data));
+  console.log(`[API →] headers:`, JSON.stringify(config.headers));
+  return config;
+});
+
+apiClient.interceptors.response.use(
+  (res) => {
+    console.log(`[API ←] ${res.status} ${res.config.url}`);
+    console.log(`[API ←] data:`, JSON.stringify(res.data));
+    return res;
+  },
+  (err) => {
+    console.log(`[API ✗] ${err.response?.status} ${err.config?.url}`);
+    console.log(`[API ✗] error:`, JSON.stringify(err.response?.data));
+    return Promise.reject(err);
+  }
+);
+
 // Request interceptor — attach auth token when available
 apiClient.interceptors.request.use((config) => {
   // const token = getAuthToken();

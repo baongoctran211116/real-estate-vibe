@@ -1,5 +1,14 @@
 // filename: src/screens/MeScreen.tsx
 import React from 'react';
+
+
+//TODO DEBUG: Test tokenStorage trực tiếp tại đây để tránh lỗi async khi logout/login
+import { tokenStorage } from '@/services/authService';
+// Dán vào bất kỳ component nào để test
+tokenStorage.getAccessToken().then(t => console.log('token:', t));
+tokenStorage.getUser().then(u => console.log('user:', u));
+tokenStorage.getRefreshToken().then(t => console.log('refreshToken:', t));
+
 import {
   View,
   Text,

@@ -24,10 +24,11 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const WRAPPER_PADDING_TOP = 0; // chỗ cho close btn
 const CARD_WIDTH  = SCREEN_WIDTH - 32;
-// Card height = 1/2 màn hình trừ đi paddingTop của wrapper
-const CARD_HEIGHT = Math.round(SCREEN_HEIGHT / 2) - WRAPPER_PADDING_TOP;
-// Ảnh chiếm 50% card
-const IMAGE_HEIGHT = Math.round(CARD_HEIGHT * 0.50);
+// Card height vừa khít: không quá cao, để card nằm gọn phía trên tab bar
+// ~42% màn hình là đủ hiển thị đầy đủ nội dung mà không bị tràn
+const CARD_HEIGHT = Math.round(SCREEN_HEIGHT * 0.50) - WRAPPER_PADDING_TOP;
+// Ảnh chiếm 45% card
+const IMAGE_HEIGHT = Math.round(CARD_HEIGHT * 0.45);
 
 interface PropertyPreviewCardProps {
   property: Property;
@@ -221,10 +222,10 @@ const styles = StyleSheet.create({
   // ── Nội dung ──
   content: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 12,
-    gap: 6,
+    paddingHorizontal: 14,
+    paddingTop: 8,
+    paddingBottom: 10,
+    gap: 5,
     justifyContent: 'space-between',
   },
   topRow: {
@@ -293,8 +294,8 @@ const styles = StyleSheet.create({
   // ── Close btn ──
   closeBtn: {
     position: 'absolute',
-    top: 0,
-    right: -4,
+    top: 3,
+    right: 3,
     width: 30,
     height: 30,
     borderRadius: 15,

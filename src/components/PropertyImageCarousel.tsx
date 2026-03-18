@@ -8,6 +8,7 @@ import {
   Dimensions,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  LayoutChangeEvent,
 } from 'react-native';
 import FastImage from '../utils/FastImageShim';
 
@@ -27,19 +28,32 @@ const PropertyImageCarousel: React.FC<PropertyImageCarouselProps> = ({
   borderRadius = 12,
 }) => {
   const [activeIndex, setActiveIndex] = useState(0);
+  // FIX: dùng dynamic width đo từ onLayout thay vì SCREEN_WIDTH tĩnh
+  // → tránh ảnh bị xám/sai size khi navigate back
+  const [containerWidth, setContainerWidth] = useState(SCREEN_WIDTH);
   const scrollRef = useRef<ScrollView>(null);
-  const width = SCREEN_WIDTH;
+
+  const handleLayout = useCallback((e: LayoutChangeEvent) => {
+    const w = e.nativeEvent.layout.width;
+    if (w > 0 && w !== containerWidth) {
+      setContainerWidth(w);
+      // Scroll lại đúng vị trí sau khi width thay đổi
+      if (activeIndex > 0) {
+        scrollRef.current?.scrollTo({ x: w * activeIndex, animated: false });
+      }
+    }
+  }, [containerWidth, activeIndex]);
 
   const handleScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const index = Math.round(e.nativeEvent.contentOffset.x / width);
+      const index = Math.round(e.nativeEvent.contentOffset.x / containerWidth);
       setActiveIndex(index);
     },
-    [width]
+    [containerWidth]
   );
 
   return (
-    <View style={[styles.container, { height, borderRadius }]}>
+    <View style={[styles.container, { height, borderRadius }]} onLayout={handleLayout}>
       <ScrollView
         ref={scrollRef}
         horizontal
@@ -59,7 +73,7 @@ const PropertyImageCarousel: React.FC<PropertyImageCarouselProps> = ({
                 ? FastImage.priority.high
                 : FastImage.priority.low,
             }}
-            style={[styles.image, { width, height }]}
+            style={[styles.image, { width: containerWidth, height }]}
             resizeMode={FastImage.resizeMode.cover}
           />
         ))}

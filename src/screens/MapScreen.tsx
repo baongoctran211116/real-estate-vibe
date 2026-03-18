@@ -8,7 +8,11 @@ import {
   TouchableOpacity,
   Animated,
   ScrollView,
+  Dimensions,
+  LayoutChangeEvent,
 } from 'react-native';
+
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
@@ -38,6 +42,26 @@ const MapScreen: React.FC = () => {
   const [searchText, setSearchText]              = useState('');
   const [mapReady, setMapReady]                  = useState(false);
   const [resultCount, setResultCount]            = useState(0);
+  // FIX grey overlay root cause: dùng kích thước đo được từ onLayout thay vì SCREEN_W/H tĩnh
+  const [containerSize, setContainerSize]        = useState({ w: SCREEN_W, h: SCREEN_H });
+
+  //hoatt 
+  
+  const [layoutTick, setLayoutTick] = useState(0);
+  useEffect(() => {
+    if (isFocused) {
+      setLayoutTick((v) => v + 1);
+    }
+  }, [isFocused]);
+
+  const handleContainerLayout = useCallback((e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    if (width > 0 && height > 0) {
+      setContainerSize({ w: width, h: height });
+      // Ngay khi layout xác định lại → invalidate Leaflet
+      webViewRef.current?.postMessage(JSON.stringify({ type: 'INVALIDATE_SIZE' }));
+    }
+  }, []);
 
   const prevFocused   = useRef(false);
   const isFirstMount  = useRef(true);
@@ -51,6 +75,47 @@ const MapScreen: React.FC = () => {
     });
     return unsubscribe;
   }, [navigation]);
+
+  // FIX grey overlay: invalidate WebView size ở nhiều mốc thời gian sau khi focus
+  // (navigation transition kéo dài ~300ms, cần invalidate sau khi hoàn tất)
+  useEffect(() => {
+    if (!isFocused || !mapReady) return;
+
+    let raf1: any;
+    let raf2: any;
+
+    const run = () => {
+      // đợi animation frame ổn định
+      raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => {
+          webViewRef.current?.postMessage(
+            JSON.stringify({ type: 'INVALIDATE_SIZE' })
+          );
+        });
+      });
+    };
+
+    // delay đúng thời điểm navigation animation xong (~300ms)
+    const t = setTimeout(run, 320);
+
+    return () => {
+      clearTimeout(t);
+      if (raf1) cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+    };
+  }, [isFocused, mapReady]);
+
+  // useEffect(() => {
+  //   if (isFocused && mapReady) {
+  //     const timers = [50, 200, 450, 800].map((ms) =>
+  //       setTimeout(() => {
+  //         webViewRef.current?.postMessage(JSON.stringify({ type: 'INVALIDATE_SIZE' }));
+  //       }, ms)
+  //     );
+  //     return () => timers.forEach(clearTimeout);
+  //   }
+  // }, [isFocused, mapReady]);
+
   const previewAnim  = useRef(new Animated.Value(0)).current;
 
   const filters        = useFilterStore((s) => s.filters);
@@ -93,7 +158,7 @@ const MapScreen: React.FC = () => {
 
   // ─── Animate helpers ───────────────────────────────────────
   const showPreview = useCallback((property: Property) => {
-    setSelectedProperty(property);
+    setSelectedProperty(property);    
     Animated.spring(previewAnim, {
       toValue: 1,
       useNativeDriver: true,
@@ -156,33 +221,38 @@ const MapScreen: React.FC = () => {
   useEffect(() => {
     if (!mapFlyToTarget || !mapReady) return;
 
-    webViewRef.current?.postMessage(
-      JSON.stringify({
-        type:   'FLY_TO',
-        lat:    mapFlyToTarget.lat,
-        lng:    mapFlyToTarget.lng,
-        zoom:   mapFlyToTarget.zoom,
-        topPad: 0,
-      }),
-    );
+    // FIX flyTo timing: nếu screen chưa focus (vd đang ở detail), delay để chờ transition xong
+    const delay = isFocused ? 0 : 420;
+    const flyTimer = setTimeout(() => {
+      webViewRef.current?.postMessage(
+        JSON.stringify({
+          type:   'FLY_TO',
+          lat:    mapFlyToTarget.lat,
+          lng:    mapFlyToTarget.lng,
+          zoom:   mapFlyToTarget.zoom,
+          topPad: 0,
+        }),
+      );
 
-    const matchProp = filteredPropertiesRef.current.find(
-      (p) =>
-        Math.abs(p.latitude  - mapFlyToTarget.lat) < 0.0001 &&
-        Math.abs(p.longitude - mapFlyToTarget.lng) < 0.0001,
-    );
-    if (matchProp) {
-      setTimeout(() => {
-        webViewRef.current?.postMessage(
-          JSON.stringify({ type: 'JUMP_TO_PROPERTY', propertyId: matchProp.id }),
-        );
-      }, 950);
-    }
+      const matchProp = filteredPropertiesRef.current.find(
+        (p) =>
+          Math.abs(p.latitude  - mapFlyToTarget.lat) < 0.0001 &&
+          Math.abs(p.longitude - mapFlyToTarget.lng) < 0.0001,
+      );
+      if (matchProp) {
+        setTimeout(() => {
+          webViewRef.current?.postMessage(
+            JSON.stringify({ type: 'JUMP_TO_PROPERTY', propertyId: matchProp.id }),
+          );
+        }, 950);
+      }
+    }, delay);
 
     clearMapFlyTo();
+    return () => clearTimeout(flyTimer);
   // clearMapFlyTo stable (zustand action), mapFlyToTarget dùng timestamp để re-trigger
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapFlyToTarget, mapReady]);
+  }, [mapFlyToTarget, mapReady, isFocused]);
 
   // ─── Province filter change → fly ─────────────────────────
   useEffect(() => {
@@ -233,7 +303,7 @@ const MapScreen: React.FC = () => {
 <!DOCTYPE html>
 <html>
 <head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
@@ -349,7 +419,9 @@ const MapScreen: React.FC = () => {
   function handleMessage(e){
     try{
       const msg=JSON.parse(e.data);
+      console.log('[WebView message]', msg);      
       if(msg.type==='FLY_TO') flyToWithOffset(msg.lat,msg.lng,msg.zoom,msg.topPad||0);
+      if(msg.type==='INVALIDATE_SIZE'){ map.invalidateSize(true); }
       if(msg.type==='RESET_VIEW'){
         deselectAll();
         map.flyTo([INIT_LAT,INIT_LNG],INIT_ZOOM,{duration:0.85,easeLinearity:0.35});
@@ -373,6 +445,19 @@ const MapScreen: React.FC = () => {
   document.addEventListener('message',handleMessage);
   window.addEventListener('message',handleMessage);
   window.ReactNativeWebView.postMessage(JSON.stringify({type:'MAP_READY'}));
+  // Force Leaflet to recalculate its container size at multiple checkpoints
+  [100, 300, 600, 1200].forEach(function(ms){
+    setTimeout(function(){ map.invalidateSize(true); }, ms);
+    // setTimeout(() => {
+    //   map.invalidateSize(true);
+    //   //map._onResize(); //
+    // }, 0);
+  });
+  // ResizeObserver: tự invalidate bất cứ khi nào container thay đổi kích thước
+  if (typeof ResizeObserver !== 'undefined') {
+    var ro = new ResizeObserver(function() { map.invalidateSize(true); });
+    ro.observe(document.getElementById('map'));
+  }
 </script>
 </body>
 </html>`;
@@ -424,11 +509,14 @@ const MapScreen: React.FC = () => {
   );
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} onLayout={handleContainerLayout}>
       <WebView
         ref={webViewRef}
         source={{ html: mapHTML }}
-        style={StyleSheet.absoluteFillObject}
+        style={[StyleSheet.absoluteFillObject, 
+        {width: containerSize.w, height: containerSize.h , opacity: layoutTick % 2 === 0 ? 1 : 0.999}]}
+        //{width: containerSize.w, height: containerSize.h}]}
+        androidLayerType="hardware"
         onMessage={handleWebViewMessage}
         javaScriptEnabled
         domStorageEnabled
@@ -436,6 +524,7 @@ const MapScreen: React.FC = () => {
         scrollEnabled={false}
         bounces={false}
         originWhitelist={['*']}
+        scalesPageToFit={false}
       />
 
       {(isLoading || !mapReady) && (
@@ -508,7 +597,9 @@ const MapScreen: React.FC = () => {
         <Animated.View
           style={[
             styles.previewContainer,
-            { bottom: insets.bottom },
+            // FIX preview position: giảm bottom để card nằm gọn trên tab bar, tránh bị che khuất khi có insets lớn
+            //{ bottom: 64 + insets.bottom },
+            { bottom: 2 },
             {
               opacity: previewAnim,
               transform: [{
@@ -559,7 +650,7 @@ const styles = StyleSheet.create({
   toolbarLeft: { flexDirection: 'row', gap: 10 },
   toolbarCircleBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 5 },
   toolbarBtnIcon: { fontSize: 22 },
-  previewContainer: { position: 'absolute', left: 16, right: 16, alignItems: 'center', zIndex: 20, bottom: 0 },
+  previewContainer: { position: 'absolute', left: 16, right: 16, alignItems: 'center', zIndex: 20 },
 });
 
 export default MapScreen;

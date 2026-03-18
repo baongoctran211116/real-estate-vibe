@@ -130,6 +130,7 @@ const RegisterScreen: React.FC = () => {
   const [showConfirm, setShowConfirm] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [successMsg, setSuccessMsg] = useState('');
 
   const emailRef = useRef<TextInput>(null);
   const phoneRef = useRef<TextInput>(null);
@@ -163,7 +164,23 @@ const RegisterScreen: React.FC = () => {
   const handleSubmit = () => {
     Keyboard.dismiss();
     if (!validate()) return;
-    register({ fullName: fullName.trim(), email: email.trim(), phone: phone.trim() || undefined, password, confirmPassword });
+    register(
+      { fullName: fullName.trim(), email: email.trim(), phone: phone.trim() || undefined, password, confirmPassword },
+      {
+        onSuccess: () => {
+          // Hiện thông báo thành công
+          setSuccessMsg('🎉 Đăng ký thành công! Chào mừng bạn đến với ứng dụng.');
+          // Reset toàn bộ form
+          setFullName('');
+          setEmail('');
+          setPhone('');
+          setPassword('');
+          setConfirmPassword('');
+          setAgreed(false);
+          setErrors({});
+        },
+      }
+    );
   };
 
   return (
@@ -192,6 +209,13 @@ const RegisterScreen: React.FC = () => {
             {!!serverError && (
               <View style={styles.errorBanner}>
                 <Text style={styles.errorBannerText}>⚠️ {serverError}</Text>
+              </View>
+            )}
+
+            {/* Success message */}
+            {!!successMsg && (
+              <View style={styles.successBanner}>
+                <Text style={styles.successBannerText}>{successMsg}</Text>
               </View>
             )}
 
@@ -351,6 +375,18 @@ const styles = StyleSheet.create({
   title: { fontSize: 26, fontWeight: '800', color: '#111827', marginBottom: 6 },
   subtitle: { fontSize: 15, color: '#6B7280' },
 
+  successBanner: {
+    backgroundColor: '#F0FDF4',
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: '#86EFAC',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  successBannerText: { color: '#15803D', fontSize: 14, fontWeight: '600', flex: 1 },
   errorBanner: {
     backgroundColor: '#FEF2F2',
     borderRadius: 10,

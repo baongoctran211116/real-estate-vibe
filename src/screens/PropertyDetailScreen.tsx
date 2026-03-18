@@ -32,6 +32,7 @@ const PropertyDetailScreen: React.FC = () => {
 
   // ─── Jump to this property on the Map tab ────────────────
   const handleViewOnMap = useCallback(() => {
+    
     if (!property) return;
 
     // 1. Set province filter so map shows the right markers
@@ -39,9 +40,9 @@ const PropertyDetailScreen: React.FC = () => {
 
     // 2. Tell MapScreen to fly to this exact property coordinate
     flyMapTo(property.latitude, property.longitude, 16);
-
     // 3. Navigate to Map tab
     (navigation as any).navigate('MainTabs', { screen: 'Map' });
+
   }, [property, flyMapTo, setFilter, navigation]);
 
   const handleShare = useCallback(async () => {
@@ -92,6 +93,14 @@ const PropertyDetailScreen: React.FC = () => {
             borderRadius={0}
             showCounter
           />
+          {/* Back button — top left, above safe area */}
+          <TouchableOpacity
+            style={[styles.backNavBtn, { top: insets.top + 10 }]}
+            onPress={() => navigation.goBack()}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.backNavBtnText}>←</Text>
+          </TouchableOpacity>
           <View style={styles.carouselOverlay}>
             <TouchableOpacity style={styles.iconBtn} onPress={handleShare}>
               <Text style={styles.iconBtnText}>↗️</Text>
@@ -121,7 +130,7 @@ const PropertyDetailScreen: React.FC = () => {
           {/* ── View on Map button ── */}
           <TouchableOpacity style={styles.viewOnMapBtn} onPress={handleViewOnMap} activeOpacity={0.85}>
             <Text style={styles.viewOnMapIcon}>🗺️</Text>
-            <Text style={styles.viewOnMapText}>Xem vị trí trên bản đồ</Text>
+            <Text style={styles.viewOnMapText}>Xem vị trí trên bản đồ 1</Text>
             <Text style={styles.viewOnMapArrow}>›</Text>
           </TouchableOpacity>
 
@@ -214,6 +223,19 @@ const styles = StyleSheet.create({
 
   carouselContainer: { position: 'relative' },
   carouselOverlay: { position: 'absolute', top: 12, right: 12, flexDirection: 'row', gap: 10 },
+  backNavBtn: {
+    position: 'absolute',
+    left: 12,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 5,
+    zIndex: 10,
+  },
+  backNavBtnText: { fontSize: 20, color: '#111827', fontWeight: '700', lineHeight: 22 },
   iconBtn: {
     width: 38, height: 38, borderRadius: 19,
     backgroundColor: 'rgba(255,255,255,0.92)',

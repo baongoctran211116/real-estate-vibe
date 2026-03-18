@@ -24,10 +24,10 @@ export interface RegisterPayload {
 
 export interface AuthResponse {
   user: User;
-  token: string;
+  token: string; // accessToken — giữ tên cũ để không break useAuthStore / useAuth
 }
 
 export interface AuthError {
   message: string;
-  field?: string;
+  field?: string; // tên field lỗi, highlight đúng input
 }
