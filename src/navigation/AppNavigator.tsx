@@ -27,7 +27,8 @@ const AppNavigator: React.FC = () => {
   return (
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
       {/* Main app - luôn accessible */}
-      <RootStack.Screen name="MainTabs" component={TabNavigator} />
+      <RootStack.Screen 
+        name="MainTabs" component={TabNavigator} />
 
       {/* Detail screens */}
       <RootStack.Screen

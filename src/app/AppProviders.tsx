@@ -32,7 +32,6 @@ const SessionRestorer: React.FC<{ children: React.ReactNode }> = ({ children }) 
       </View>
     );
   }
-
   return <>{children}</>;
 };
 

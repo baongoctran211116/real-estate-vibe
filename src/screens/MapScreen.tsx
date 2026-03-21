@@ -194,9 +194,9 @@ const MapScreen: React.FC = () => {
 
     // Transition từ không focus → focus
     if (isFocused && !prevFocused.current && mapReady) {
-      if (tabPressedRef.current && !mapFlyToTarget) {
+      if (tabPressedRef.current && !mapFlyToTarget && !pendingFlyToRef.current) {
         // Chỉ reset khi user chủ động bấm tab Map
-        // (KHÔNG reset khi back từ PropertyDetail/màn hình khác)
+        // (KHÔNG reset khi back từ PropertyDetail, KHÔNG reset khi có flyTo pending)
         webViewRef.current?.postMessage(
           JSON.stringify({ type: 'FLY_TO', lat: INIT_LAT, lng: INIT_LNG, zoom: INIT_ZOOM }),
         );
@@ -213,50 +213,70 @@ const MapScreen: React.FC = () => {
   }, [isFocused, mapReady, mapFlyToTarget]);
 
   // ─── External fly-to ──────────────────────────────────────
-  // ✅ FIX 4: Dùng ref cho filteredProperties thay vì đưa vào deps
-  // (array mới mỗi render → infinite loop)
+  // Dùng ref cho filteredProperties (array mới mỗi render → tránh deps loop)
   const filteredPropertiesRef = useRef(filteredProperties);
   useEffect(() => { filteredPropertiesRef.current = filteredProperties; }, [filteredProperties]);
 
+  // pendingFlyToRef: snapshot tọa độ cần fly.
+  // Không dùng delay mù (setTimeout) mà chờ sự kiện isFocused=true thật sự.
+  // Giải quyết hoàn toàn race condition giữa navigation transition và WebView.
+  const pendingFlyToRef = useRef<{ lat: number; lng: number; zoom: number } | null>(null);
+
+  // Bước 1: Store có target → snapshot vào ref, clear store ngay.
+  // Không gửi WebView message ở đây vì screen có thể chưa focus/mapReady.
   useEffect(() => {
-    if (!mapFlyToTarget || !mapReady) return;
-
-    // FIX flyTo timing: nếu screen chưa focus (vd đang ở detail), delay để chờ transition xong
-    const delay = isFocused ? 0 : 420;
-    const flyTimer = setTimeout(() => {
-      webViewRef.current?.postMessage(
-        JSON.stringify({
-          type:   'FLY_TO',
-          lat:    mapFlyToTarget.lat,
-          lng:    mapFlyToTarget.lng,
-          zoom:   mapFlyToTarget.zoom,
-          topPad: 0,
-        }),
-      );
-
-      const matchProp = filteredPropertiesRef.current.find(
-        (p) =>
-          Math.abs(p.latitude  - mapFlyToTarget.lat) < 0.0001 &&
-          Math.abs(p.longitude - mapFlyToTarget.lng) < 0.0001,
-      );
-      if (matchProp) {
-        setTimeout(() => {
-          webViewRef.current?.postMessage(
-            JSON.stringify({ type: 'JUMP_TO_PROPERTY', propertyId: matchProp.id }),
-          );
-        }, 950);
-      }
-    }, delay);
-
+    if (!mapFlyToTarget) return;
+    pendingFlyToRef.current = {
+      lat:  mapFlyToTarget.lat,
+      lng:  mapFlyToTarget.lng,
+      zoom: mapFlyToTarget.zoom,
+    };
     clearMapFlyTo();
-    return () => clearTimeout(flyTimer);
-  // clearMapFlyTo stable (zustand action), mapFlyToTarget dùng timestamp để re-trigger
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapFlyToTarget, mapReady, isFocused]);
+  }, [mapFlyToTarget]);
+
+  // Bước 2: Khi isFocused=true VÀ mapReady=true → flush pendingFlyToRef.
+  // Effect này đảm bảo message chỉ được gửi khi Leaflet đã sẵn sàng nhận.
+  useEffect(() => {
+    if (!isFocused || !mapReady) return;
+    const target = pendingFlyToRef.current;
+    if (!target) return;
+
+    // 2 animation frames để Leaflet invalidateSize xong sau navigation transition
+    let t: ReturnType<typeof setTimeout>;
+    const raf1 = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        webViewRef.current?.postMessage(
+          JSON.stringify({ type: 'FLY_TO', lat: target.lat, lng: target.lng, zoom: target.zoom, topPad: 0 }),
+        );
+        const matchProp = filteredPropertiesRef.current.find(
+          (p) =>
+            Math.abs(p.latitude  - target.lat) < 0.0001 &&
+            Math.abs(p.longitude - target.lng) < 0.0001,
+        );
+        if (matchProp) {
+          t = setTimeout(() => {
+            webViewRef.current?.postMessage(
+              JSON.stringify({ type: 'JUMP_TO_PROPERTY', propertyId: matchProp.id }),
+            );
+          }, 900);
+        }
+        pendingFlyToRef.current = null;
+      });
+    });
+
+    return () => {
+      clearTimeout(t);
+      cancelAnimationFrame(raf1);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFocused, mapReady]);
 
   // ─── Province filter change → fly ─────────────────────────
   useEffect(() => {
     if (!mapReady) return;
+    // Nếu có flyTo đang pending (từ PropertyDetail) → KHÔNG override bằng tọa độ tỉnh
+    if (pendingFlyToRef.current) return;
     if (filters.province && PROVINCE_REGIONS[filters.province]) {
       const region = PROVINCE_REGIONS[filters.province];
       webViewRef.current?.postMessage(

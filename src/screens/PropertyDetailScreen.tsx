@@ -28,22 +28,18 @@ const PropertyDetailScreen: React.FC = () => {
   const { property, isLoading, isError } = usePropertyDetail(propertyId);
 
   const flyMapTo   = useFilterStore((s) => s.flyMapTo);
-  const setFilter  = useFilterStore((s) => s.setFilter);
 
   // ─── Jump to this property on the Map tab ────────────────
   const handleViewOnMap = useCallback(() => {
-    
     if (!property) return;
 
-    // 1. Set province filter so map shows the right markers
-    setFilter('province', property.province);
+    // Fly đến đúng tọa độ bất động sản ở zoom chi tiết cao
+    // KHÔNG set province filter ở đây để tránh override flyTo bằng tọa độ tỉnh
+    flyMapTo(property.latitude, property.longitude, 17);
 
-    // 2. Tell MapScreen to fly to this exact property coordinate
-    flyMapTo(property.latitude, property.longitude, 16);
-    // 3. Navigate to Map tab
+    // Navigate to Map tab
     (navigation as any).navigate('MainTabs', { screen: 'Map' });
-
-  }, [property, flyMapTo, setFilter, navigation]);
+  }, [property, flyMapTo, navigation]);
 
   const handleShare = useCallback(async () => {
     if (!property) return;
