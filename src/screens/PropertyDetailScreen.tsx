@@ -130,7 +130,7 @@ const PropertyDetailScreen: React.FC = () => {
           {/* ── View on Map button ── */}
           <TouchableOpacity style={styles.viewOnMapBtn} onPress={handleViewOnMap} activeOpacity={0.85}>
             <Text style={styles.viewOnMapIcon}>🗺️</Text>
-            <Text style={styles.viewOnMapText}>Xem vị trí trên bản đồ 1</Text>
+            <Text style={styles.viewOnMapText}>Xem vị trí trên bản đồ </Text>
             <Text style={styles.viewOnMapArrow}>›</Text>
           </TouchableOpacity>
 

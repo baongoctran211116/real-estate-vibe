@@ -514,8 +514,7 @@ const MapScreen: React.FC = () => {
         ref={webViewRef}
         source={{ html: mapHTML }}
         style={[StyleSheet.absoluteFillObject, 
-        {width: containerSize.w, height: containerSize.h , opacity: layoutTick % 2 === 0 ? 1 : 0.999}]}
-        //{width: containerSize.w, height: containerSize.h}]}
+        {width: containerSize.w, height: containerSize.h , opacity: layoutTick % 2 === 0 ? 1 : 0.999}]}        
         androidLayerType="hardware"
         onMessage={handleWebViewMessage}
         javaScriptEnabled
