@@ -45,7 +45,6 @@ export const useFilterStore = create<FilterState>((set, get) => ({
       Object.values(filters).some((v) => v !== undefined && v !== null && v !== '')
     );
   },
-
   flyMapTo: (lat, lng, zoom) => {
     set({ mapFlyToTarget: { lat, lng, zoom, timestamp: Date.now() } });
   },

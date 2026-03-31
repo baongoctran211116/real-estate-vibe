@@ -35,6 +35,7 @@ export interface PropertyFilters {
   propertyType?: PropertyType;
   minBedrooms?: number;
   minArea?: number;
+  start?:number;
 }
 
 export interface PaginatedResponse<T> {

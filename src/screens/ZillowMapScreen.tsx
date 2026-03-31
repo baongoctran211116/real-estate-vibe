@@ -1,265 +1,359 @@
-import React, { useState, useRef, useCallback } from 'react';
+// filename: src/screens/ZillowMapScreen.tsx
+import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  TextInput,
   Animated,
   Dimensions,
-  LayoutChangeEvent,
+  ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PropertyPreviewCard from '../components/PropertyPreviewCard';
-import { Property } from '../types/property';
+import SearchBar from '../components/SearchBar';
+import FilterPanel from '../components/FilterPanel';
+import { Property, Province } from '../types/property';
+import { MOCK_PROPERTIES } from '../data/mockProperties';
+import { useFilterStore, PROVINCES, PROVINCE_REGIONS } from '../store/useFilterStore';
 
+// ─── Constants ────────────────────────────────────────────────────────────────
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const INIT_LAT  = 10.7769;
+const INIT_LNG  = 106.7009;
+const INIT_ZOOM = 12;
 
-// ─── Fake data đúng type Property ─────────────────────────────────────────────
-const DISTRICTS = ['Beverly Hills', 'Santa Monica', 'Bel Air', 'Westwood', 'Malibu'];
-const PROVINCES = ['Los Angeles', 'California'];
-const PROPERTY_TYPES = ['house', 'apartment', 'villa', 'townhouse'];
-const ADDRESSES = [
-  '123 Sunset Blvd', '456 Wilshire Blvd', '789 Rodeo Dr',
-  '321 Ocean Ave', '654 Mulholland Dr', '987 Hollywood Blvd',
-];
-const PLACEHOLDER_IMAGES = [
-  'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800',
-  'https://images.unsplash.com/photo-1570129477492-45c003edd2be?w=800',
-  'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=800',
-  'https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=800',
-  'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800',
-];
-
-const formatPriceLabel = (price: number) => {
-  if (price >= 1_000_000) return `${(price / 1_000_000).toFixed(2).replace(/\.?0+$/, '')}M`;
-  if (price >= 1_000) return `${Math.round(price / 1_000)}K`;
-  return `${price}`;
+const PROVINCE_ZOOM: Record<string, { lat: number; lng: number; zoom: number }> = {
+  'Ho Chi Minh City': { lat: 10.7769, lng: 106.7009, zoom: 12 },
+  'Hanoi':            { lat: 21.0285, lng: 105.8542, zoom: 12 },
+  'Da Nang':          { lat: 16.0678, lng: 108.2208, zoom: 12 },
+  'Hai Phong':        { lat: 20.8648, lng: 106.6838, zoom: 12 },
+  'Can Tho':          { lat: 10.0341, lng: 105.7875, zoom: 12 },
 };
 
-const generateFakeProperties = (): Property[] => {
-  const centerLat = 34.0195;
-  const centerLng = -118.4912;
-  const props: Property[] = [];
+const getProvinceView = (province: string) =>
+  PROVINCE_ZOOM[province] ?? (PROVINCE_REGIONS as any)[province] ?? null;
 
-  for (let i = 0; i < 200; i++) {
-    const latitude  = centerLat + (Math.random() - 0.5) * 0.04;
-    const longitude = centerLng + (Math.random() - 0.5) * 0.06;
+function formatPriceShort(price: number): string {
+  if (price >= 1_000_000_000) return parseFloat((price / 1_000_000_000).toFixed(1)) + ' tỷ';
+  if (price >= 1_000_000)     return Math.round(price / 1_000_000) + ' tr';
+  return price.toString();
+}
 
-    const priceRand = Math.random();
-    let price: number;
-    if (priceRand < 0.05)      price = Math.round((Math.random() * 500 + 400) * 1000);
-    else if (priceRand < 0.15) price = Math.round((Math.random() * 0.5 + 0.8) * 1_000_000);
-    else if (priceRand < 0.5)  price = Math.round((Math.random() * 1 + 1.2) * 1_000_000);
-    else if (priceRand < 0.8)  price = Math.round((Math.random() * 1.5 + 2) * 1_000_000);
-    else                        price = Math.round((Math.random() * 3 + 3.5) * 1_000_000);
-
-    const imageCount = Math.floor(Math.random() * 4) + 1;
-    const images = Array.from({ length: imageCount }, (_, idx) =>
-      PLACEHOLDER_IMAGES[(i + idx) % PLACEHOLDER_IMAGES.length],
-    );
-
-    props.push({
-      id:           `zillow-${i}`,
-      title:        `${ADDRESSES[i % ADDRESSES.length]}, ${DISTRICTS[i % DISTRICTS.length]}`,
-      price,
-      address:      `${Math.floor(100 + Math.random() * 8900)} ${ADDRESSES[i % ADDRESSES.length]}`,
-      district:     DISTRICTS[i % DISTRICTS.length],
-      province:     PROVINCES[i % PROVINCES.length],
-      area:         Math.floor(Math.random() * 300) + 80,       // m²
-      bedrooms:     Math.floor(Math.random() * 4) + 1,
-      bathrooms:    Math.floor(Math.random() * 3) + 1,
-      propertyType: PROPERTY_TYPES[i % PROPERTY_TYPES.length] as any,
-      images,
-      latitude,
-      longitude,
-      // các field optional khác để thoả mãn type
-      isHighlighted: Math.random() < 0.15,
-      priceLabel:   formatPriceLabel(price),
-    } as any);
-  }
-
-  return props;
-};
-
-const PROPERTIES = generateFakeProperties();
-
-// ─── Map markers data (chỉ gửi id + toạ độ + label lên WebView) ──────────────
-const MARKERS = PROPERTIES.map((p: any) => ({
-  id:            p.id,
-  lat:           p.latitude,
-  lng:           p.longitude,
-  label:         p.priceLabel,
-  isHighlighted: p.isHighlighted,
-}));
-
-// ─── Leaflet HTML ─────────────────────────────────────────────────────────────
-const getLeafletHTML = (markers: any[]) => {
-  const markersJSON = JSON.stringify(markers);
-
-  return `
-<!DOCTYPE html>
+// ─── Leaflet HTML (static, load 1 lần) ───────────────────────────────────────
+// Markers update qua postMessage UPDATE_MARKERS với diffing — không xóa/tạo lại DOM
+const LEAFLET_HTML = `<!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body, #map { width: 100%; height: 100%; }
-
-    .price-marker {
-      background: rgba(30,30,30,0.88); color: #fff;
-      border-radius: 20px; padding: 4px 10px;
-      font-family: -apple-system,'Helvetica Neue',sans-serif;
-      font-size: 13px; font-weight: 600; white-space: nowrap;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.45); cursor: pointer;
-      border: 1.5px solid rgba(255,255,255,0.12);
-      transition: transform 0.1s, background 0.1s;
-      letter-spacing: 0.2px; line-height: 1;
-    }
-    .price-marker:hover  { transform: scale(1.1); z-index: 9999 !important; }
-    .price-marker.highlighted {
-      background: #f5e6c8; color: #1a1a1a;
-      border: 1.5px solid rgba(180,140,70,0.4);
-      box-shadow: 0 2px 8px rgba(180,140,70,0.35);
-    }
-    .price-marker.selected {
-      background: #006aff; color: #fff;
-      border: 2px solid rgba(255,255,255,0.8);
-      transform: scale(1.15); z-index: 9999 !important;
-    }
-    .leaflet-div-icon {
-      background: transparent !important; border: none !important; overflow: visible !important;
-    }
-    .leaflet-control-zoom a { border-radius: 8px !important; }
-    .leaflet-control-zoom { border-radius: 10px !important; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.2) !important; }
-  </style>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body,#map{width:100%;height:100%;background:#e8e0d8}
+  .pm{
+    background:rgba(28,28,28,0.90);color:#fff;
+    border-radius:20px;padding:5px 11px;
+    font-family:-apple-system,'SF Pro Text','Helvetica Neue',sans-serif;
+    font-size:12.5px;font-weight:600;white-space:nowrap;
+    box-shadow:0 2px 8px rgba(0,0,0,0.35),0 1px 2px rgba(0,0,0,0.2);
+    border:1.5px solid rgba(255,255,255,0.10);letter-spacing:0.15px;line-height:1;
+    will-change:transform;
+    transition:transform 0.15s ease,background 0.15s ease,box-shadow 0.15s ease;
+    display:inline-flex;align-items:center;cursor:pointer;
+  }
+  .pm.hi{background:#f5e6c8;color:#1a1a1a;border-color:rgba(180,140,70,0.35);box-shadow:0 2px 8px rgba(180,140,70,0.30)}
+  .pm.sel{background:#006aff;color:#fff;border:2px solid rgba(255,255,255,0.85);transform:scale(1.18);box-shadow:0 4px 16px rgba(0,106,255,0.45);z-index:9999!important}
+  .leaflet-div-icon{background:transparent!important;border:none!important;overflow:visible!important}
+  .leaflet-control-zoom{border-radius:12px!important;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,0.18)!important;border:none!important}
+  .leaflet-control-zoom a{border-radius:0!important;border-bottom:1px solid #e5e7eb!important;color:#374151!important;font-weight:600!important}
+  .leaflet-control-zoom a:last-child{border-bottom:none!important}
+  .leaflet-tile-pane{will-change:transform}
+</style>
 </head>
 <body>
 <div id="map"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-  const markers = ${markersJSON};
-  let selectedMarkerEl = null;
+(function(){
+  var selEl = null;
+  var markerMap = {};
+  var markerGroup = L.layerGroup();
 
-  const map = L.map('map', {
-    center: [34.0195, -118.4912], zoom: 15,
-    zoomControl: false, attributionControl: false,
+  var map = L.map('map',{
+    center:[${INIT_LAT},${INIT_LNG}],zoom:${INIT_ZOOM},
+    zoomControl:false,attributionControl:false,
+    zoomAnimation:true,fadeAnimation:true,markerZoomAnimation:true,
   });
-  L.tileLayer('https://mt1.google.com/vt/lyrs=r&x={x}&y={y}&z={z}', { maxZoom: 19 }).addTo(map);
 
-  markers.forEach(function(m) {
-    const cls = 'price-marker' + (m.isHighlighted ? ' highlighted' : '');
-    const html = '<span class="' + cls + '" style="display:inline-flex;align-items:center;">' + m.label + '</span>';
-    const icon = L.divIcon({ html: html, className: '', iconSize: null, iconAnchor: null });
-    const marker = L.marker([m.lat, m.lng], { icon: icon, zIndexOffset: m.isHighlighted ? 100 : 0 });
+  L.tileLayer('https://mt1.google.com/vt/lyrs=r&x={x}&y={y}&z={z}',{
+    maxZoom:19,updateWhenIdle:false,updateWhenZooming:false,keepBuffer:4,
+  }).addTo(map);
 
-    marker.on('click', function(e) {
-      if (selectedMarkerEl) selectedMarkerEl.classList.remove('selected');
-      const iconEl = e.target._icon && e.target._icon.querySelector('.price-marker');
-      if (iconEl) { iconEl.classList.add('selected'); selectedMarkerEl = iconEl; }
-      if (window.ReactNativeWebView) {
-        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MARKER_PRESS', propertyId: m.id }));
-      }
+  L.control.zoom({position:'bottomright'}).addTo(map);
+  markerGroup.addTo(map);
+
+  function makeIcon(label,isHi){
+    return L.divIcon({
+      html:'<span class="pm'+(isHi?' hi':'')+'" >'+label+'</span>',
+      className:'',iconSize:null,iconAnchor:null,
     });
-    marker.addTo(map);
+  }
+
+  // Diff update — chỉ thêm/xóa markers thực sự thay đổi
+  function updateMarkers(props){
+    var newIds={};
+    props.forEach(function(p){ newIds[p.id]=true; });
+
+    // Xóa markers không còn trong list mới
+    Object.keys(markerMap).forEach(function(id){
+      if(!newIds[id]){ markerGroup.removeLayer(markerMap[id]); delete markerMap[id]; }
+    });
+
+    // Reset selected nếu bị xóa
+    if(selEl && !document.body.contains(selEl)) selEl=null;
+
+    // Thêm markers mới (bỏ qua nếu đã tồn tại)
+    props.forEach(function(p){
+      if(markerMap[p.id]) return; // đã có, bỏ qua
+      var mk=L.marker([p.lat,p.lng],{
+        icon:makeIcon(p.label,p.isHighlighted),
+        zIndexOffset:p.isHighlighted?100:0,
+      });
+      (function(prop,m){
+        m.on('click',function(e){
+          if(selEl) selEl.classList.remove('sel');
+          var el=e.target._icon&&e.target._icon.querySelector('.pm');
+          if(el){el.classList.add('sel');selEl=el;}
+          if(window.ReactNativeWebView)
+            window.ReactNativeWebView.postMessage(JSON.stringify({type:'MARKER_PRESS',propertyId:prop.id}));
+        });
+      })(p,mk);
+      markerGroup.addLayer(mk);
+      markerMap[p.id]=mk;
+    });
+  }
+
+  map.on('click',function(){
+    if(selEl){selEl.classList.remove('sel');selEl=null;}
+    if(window.ReactNativeWebView)
+      window.ReactNativeWebView.postMessage(JSON.stringify({type:'MAP_PRESS'}));
   });
 
-  map.on('click', function() {
-    if (selectedMarkerEl) { selectedMarkerEl.classList.remove('selected'); selectedMarkerEl = null; }
-    if (window.ReactNativeWebView) {
-      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MAP_PRESS' }));
+  function flyTo(lat,lng,zoom,topPad,bottomPad){
+    var offsetY=Math.round(((topPad||0)-(bottomPad||0))/2);
+    map.flyTo([lat,lng],zoom,{duration:0.75,easeLinearity:0.4});
+    if(offsetY!==0){
+      map.once('moveend',function(){
+        map.panBy([0,offsetY],{animate:true,duration:0.2});
+      });
     }
-  });
-
-  L.control.zoom({ position: 'bottomright' }).addTo(map);
-  [100, 300, 600, 1200].forEach(function(ms) {
-    setTimeout(function() { map.invalidateSize(true); }, ms);
-  });
-
-  function handleMessage(e) {
-    try {
-      var msg = JSON.parse(e.data);
-      if (msg.type === 'INVALIDATE_SIZE') map.invalidateSize(true);
-      if (msg.type === 'DESELECT') {
-        if (selectedMarkerEl) { selectedMarkerEl.classList.remove('selected'); selectedMarkerEl = null; }
-      }
-    } catch(err) {}
   }
-  document.addEventListener('message', handleMessage);
-  window.addEventListener('message', handleMessage);
-  window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MAP_READY' }));
 
-  if (typeof ResizeObserver !== 'undefined') {
-    var ro = new ResizeObserver(function() { map.invalidateSize(true); });
-    ro.observe(document.getElementById('map'));
+  function onMsg(e){
+    var msg; try{msg=JSON.parse(e.data);}catch(err){return;}
+    if(msg.type==='UPDATE_MARKERS') updateMarkers(msg.markers);
+    else if(msg.type==='FLY_TO')    flyTo(msg.lat,msg.lng,msg.zoom,msg.topPad||0,msg.bottomPad||0);
+    else if(msg.type==='INVALIDATE_SIZE') map.invalidateSize(true);
+    else if(msg.type==='RESET_VIEW'){
+      if(selEl){selEl.classList.remove('sel');selEl=null;}
+      map.flyTo([${INIT_LAT},${INIT_LNG}],${INIT_ZOOM},{duration:0.75});
+    }
+    else if(msg.type==='DESELECT'){
+      if(selEl){selEl.classList.remove('sel');selEl=null;}
+    }
   }
+  document.addEventListener('message',onMsg);
+  window.addEventListener('message',onMsg);
+
+  setTimeout(function(){map.invalidateSize(true);},150);
+  window.ReactNativeWebView.postMessage(JSON.stringify({type:'MAP_READY'}));
+})();
 </script>
 </body>
-</html>
-  `;
-};
+</html>`;
 
 // ─── Main Screen ─────────────────────────────────────────────────────────────
-const ZillowMapScreen = () => {
-  const insets    = useSafeAreaInsets();
-  const webViewRef = useRef<any>(null);
+const ZillowMapScreen: React.FC = () => {
+  const insets     = useSafeAreaInsets();
+  const webViewRef = useRef<WebView>(null);
 
+  const filters      = useFilterStore((s) => s.filters);
+  const setFilter    = useFilterStore((s) => s.setFilter);
+  const resetFilters = useFilterStore((s) => s.resetFilters);
+  const hasActive    = useFilterStore((s) =>
+    s.searchKeyword.trim().length > 0 ||
+    Object.values(s.filters).some((v) => v !== undefined && v !== null && v !== '')
+  );
+
+  const [searchText, setSearchText]             = useState('');
+  const [filterVisible, setFilterVisible]       = useState(false);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
-  const [mapReady, setMapReady]                  = useState(false);
-  const [containerSize, setContainerSize]        = useState({ w: SCREEN_W, h: SCREEN_H });
+  const [mapReady, setMapReady]                 = useState(false);
+  const [containerSize, setContainerSize]       = useState({ w: SCREEN_W, h: SCREEN_H });
 
-  const previewAnim = useRef(new Animated.Value(0)).current;
+  const previewAnim         = useRef(new Animated.Value(0)).current;
+  const mapReadyRef         = useRef(false);
+  const insetsRef           = useRef(insets);
+  const selPropRef          = useRef(selectedProperty);
+  const containerSizeRef    = useRef({ w: SCREEN_W, h: SCREEN_H });
 
-  const handleContainerLayout = useCallback((e: LayoutChangeEvent) => {
-    const { width, height } = e.nativeEvent.layout;
-    if (width > 0 && height > 0) {
-      setContainerSize({ w: width, h: height });
-      webViewRef.current?.postMessage(JSON.stringify({ type: 'INVALIDATE_SIZE' }));
-    }
+  useEffect(() => { insetsRef.current = insets; }, [insets]);
+  useEffect(() => { selPropRef.current = selectedProperty; }, [selectedProperty]);
+
+  // ── send — deps rỗng, không bao giờ recreate ─────────────────────────────
+  const send = useCallback((msg: object) => {
+    if (!mapReadyRef.current) return;
+    webViewRef.current?.postMessage(JSON.stringify(msg));
   }, []);
 
+  // ── Padding đọc từ ref — không trigger re-render ──────────────────────────
+  const getMapPadding = useCallback(() => ({
+    topPad:    insetsRef.current.top + 150,
+    bottomPad: 20 + insetsRef.current.bottom + (selPropRef.current ? 140 : 0),
+  }), []);
+
+  const flyTo = useCallback((lat: number, lng: number, zoom: number) => {
+    const { topPad, bottomPad } = getMapPadding();
+    send({ type: 'FLY_TO', lat, lng, zoom, topPad, bottomPad });
+  }, [send, getMapPadding]);
+
+  // ── Filter data ───────────────────────────────────────────────────────────
+  const filteredProperties = useMemo<Property[]>(() => {
+    let list = MOCK_PROPERTIES as Property[];
+    if (filters.province)     list = list.filter(p => p.province === filters.province);
+    if (filters.propertyType) list = list.filter(p => p.propertyType === filters.propertyType);
+    if (filters.minPrice)     list = list.filter(p => p.price >= (filters.minPrice as number));
+    if (filters.maxPrice)     list = list.filter(p => p.price <= (filters.maxPrice as number));
+    if (filters.minBedrooms)  list = list.filter(p => (p as any).bedrooms >= filters.minBedrooms);
+    if (searchText.trim()) {
+      const q = searchText.toLowerCase();
+      list = list.filter(p =>
+        p.title.toLowerCase().includes(q) ||
+        p.district.toLowerCase().includes(q) ||
+        p.province.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [filters, searchText]);
+
+  const markers = useMemo(() =>
+    filteredProperties.map(p => ({
+      id:            p.id,
+      lat:           p.latitude,
+      lng:           p.longitude,
+      label:         formatPriceShort(p.price),
+      isHighlighted: !!(p as any).isHighlighted,
+    })),
+    [filteredProperties]
+  );
+
+  const markersRef = useRef(markers);
+  useEffect(() => { markersRef.current = markers; }, [markers]);
+
+  const filteredPropertiesRef = useRef(filteredProperties);
+  useEffect(() => { filteredPropertiesRef.current = filteredProperties; }, [filteredProperties]);
+
+  // ── Gửi markers khi thay đổi ─────────────────────────────────────────────
+  useEffect(() => {
+    send({ type: 'UPDATE_MARKERS', markers });
+  }, [markers, send]);
+
+  // ── Preview ───────────────────────────────────────────────────────────────
   const showPreview = useCallback((property: Property) => {
     setSelectedProperty(property);
     Animated.spring(previewAnim, {
-      toValue: 1, useNativeDriver: true, tension: 60, friction: 10,
+      toValue: 1, useNativeDriver: true, tension: 65, friction: 11,
     }).start();
   }, [previewAnim]);
 
   const hidePreview = useCallback(() => {
     Animated.timing(previewAnim, {
-      toValue: 0, duration: 200, useNativeDriver: true,
+      toValue: 0, duration: 180, useNativeDriver: true,
     }).start(() => setSelectedProperty(null));
-    webViewRef.current?.postMessage(JSON.stringify({ type: 'DESELECT' }));
-  }, [previewAnim]);
+    send({ type: 'DESELECT' });
+  }, [previewAnim, send]);
 
-  // Giống MapScreen: nhận propertyId, lookup trong PROPERTIES
+  // ── WebView message handler ───────────────────────────────────────────────
   const handleWebViewMessage = useCallback((event: any) => {
     try {
       const msg = JSON.parse(event.nativeEvent.data);
-      if (msg.type === 'MAP_READY')    setMapReady(true);
+      if (msg.type === 'MAP_READY') {
+        mapReadyRef.current = true;
+        setMapReady(true);
+        webViewRef.current?.postMessage(
+          JSON.stringify({ type: 'UPDATE_MARKERS', markers: markersRef.current })
+        );
+      }
       if (msg.type === 'MAP_PRESS')    hidePreview();
       if (msg.type === 'MARKER_PRESS') {
-        const property = PROPERTIES.find((p: any) => p.id === msg.propertyId);
-        if (property) showPreview(property);
+        const prop = filteredPropertiesRef.current.find(p => p.id === msg.propertyId);
+        if (prop) showPreview(prop);
       }
     } catch (_) {}
   }, [showPreview, hidePreview]);
 
-  const mapHTML = getLeafletHTML(MARKERS);
+  // ── Handlers ──────────────────────────────────────────────────────────────
+  const handleProvincePill = useCallback((province: Province) => {
+    const isDeselect = filters.province === province;
+    setFilter('province', isDeselect ? undefined : province);
+    const r = !isDeselect ? getProvinceView(province) : null;
+    if (r) flyTo(r.lat, r.lng, r.zoom);
+    else   flyTo(INIT_LAT, INIT_LNG, INIT_ZOOM);
+  }, [filters.province, setFilter, flyTo]);
+
+  const handleFilterProvinceSelect = useCallback((province: Province | undefined) => {
+    const r = province ? getProvinceView(province) : null;
+    if (r) flyTo(r.lat, r.lng, r.zoom);
+    else   flyTo(INIT_LAT, INIT_LNG, INIT_ZOOM);
+  }, [flyTo]);
+
+  const handleResetView = useCallback(() => {
+    resetFilters();
+    setSearchText('');
+    hidePreview();
+    send({ type: 'RESET_VIEW' });
+  }, [send, resetFilters, hidePreview]);
+
+  // ── Search debounce 400ms ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (!mapReady || !searchText.trim()) return;
+    const t = setTimeout(() => {
+      const q = searchText.toLowerCase();
+      const matched = PROVINCES.find(p => p.toLowerCase().includes(q));
+      if (matched) {
+        const r = getProvinceView(matched);
+        if (r) flyTo(r.lat, r.lng, r.zoom);
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [searchText, mapReady, flyTo]);
+
+  // ── Layout (chỉ setState khi kích thước thực sự thay đổi) ────────────────
+  const handleContainerLayout = useCallback((e: any) => {
+    const { width, height } = e.nativeEvent.layout;
+    if (
+      width > 0 && height > 0 &&
+      (width !== containerSizeRef.current.w || height !== containerSizeRef.current.h)
+    ) {
+      containerSizeRef.current = { w: width, h: height };
+      setContainerSize({ w: width, h: height });
+      send({ type: 'INVALIDATE_SIZE' });
+    }
+  }, [send]);
+
+  const resultCount = filteredProperties.length;
 
   return (
     <View style={styles.container} onLayout={handleContainerLayout}>
+
       {/* ── Map WebView ── */}
       <WebView
         ref={webViewRef}
-        source={{ html: mapHTML }}
-        style={[
-          StyleSheet.absoluteFillObject,
-          { width: containerSize.w, height: containerSize.h },
-        ]}
+        source={{ html: LEAFLET_HTML }}
+        style={[StyleSheet.absoluteFillObject, { width: containerSize.w, height: containerSize.h }]}
         androidLayerType="hardware"
         onMessage={handleWebViewMessage}
         javaScriptEnabled
@@ -271,50 +365,83 @@ const ZillowMapScreen = () => {
         scalesPageToFit={false}
         mixedContentMode="always"
         allowsInlineMediaPlayback
+        overScrollMode="never"
       />
 
-      {/* ── Search Bar ── */}
-      <View style={[styles.topBar, { top: insets.top + 10 }]}>
-        <View style={styles.searchBar}>
-          <Text style={styles.searchIcon}>🔍</Text>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Home feature, school, location..."
-            placeholderTextColor="#999"
-          />
-          <TouchableOpacity style={styles.micBtn}>
-            <Text style={{ fontSize: 16 }}>🎙</Text>
-          </TouchableOpacity>
+      {/* ── Loading overlay ── */}
+      {!mapReady && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#006AFF" />
+          <Text style={styles.loadingText}>Đang tải bản đồ...</Text>
         </View>
-        <TouchableOpacity style={styles.filterBtn}>
-          <Text style={styles.filterIcon}>⚙️</Text>
+      )}
+
+      {/* ── Top bar ── */}
+      <View style={[styles.topBar, { top: insets.top + 10 }]}>
+        <View style={styles.searchWrapper}>
+          <SearchBar
+            value={searchText}
+            onChangeText={setSearchText}
+            placeholder="Tìm tỉnh, thành phố, khu vực..."
+            style={styles.mapSearchBar}
+          />
+        </View>
+        <TouchableOpacity
+          style={[styles.filterBtn, hasActive && styles.filterBtnActive]}
+          onPress={() => setFilterVisible(true)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.filterBtnIcon}>⚙️</Text>
+          {hasActive && <View style={styles.filterDot} />}
         </TouchableOpacity>
       </View>
 
-      {/* ── Result count badge ── */}
-      <View style={[styles.countBadge, { top: insets.top + 68 }]}>
-        <Text style={styles.countBadgeText}>🏠 {PROPERTIES.length} recently sold homes</Text>
+      {/* ── Province pills ── */}
+      <View style={[styles.pillsWrapper, { top: insets.top + 68 }]}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.pillsScroll}
+          decelerationRate="fast"
+          removeClippedSubviews
+        >
+          {PROVINCES.map((p) => {
+            const isActive = filters.province === p;
+            return (
+              <TouchableOpacity
+                key={p}
+                style={[styles.provincePill, isActive && styles.provincePillActive]}
+                onPress={() => handleProvincePill(p as Province)}
+                activeOpacity={0.75}
+              >
+                {isActive && <Text style={styles.pillCheck}>✓ </Text>}
+                <Text style={[styles.provincePillText, isActive && styles.provincePillTextActive]} numberOfLines={1}>
+                  {p.replace('Ho Chi Minh City', 'TP.HCM')}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* ── Result count ── */}
+      <View style={[styles.countBadge, { top: insets.top + 118 }]}>
+        <Text style={styles.countBadgeText}>🏠 {resultCount} bất động sản</Text>
       </View>
 
       {/* ── Bottom toolbar ── */}
       <View style={[styles.bottomToolbar, { bottom: 20 + insets.bottom }]}>
         <View style={styles.toolbarLeft}>
-          <TouchableOpacity style={styles.toolbarCircleBtn}>
-            <Text style={styles.toolbarBtnIcon}>⊞</Text>
+          <TouchableOpacity style={styles.toolbarCircleBtn} activeOpacity={0.8}>
+            <Text style={styles.toolbarBtnIcon}>🗂️</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.toolbarCircleBtn}>
-            <Text style={styles.toolbarBtnIcon}>✋</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.toolbarCircleBtn}>
-            <Text style={styles.toolbarBtnIcon}>➤</Text>
+          <TouchableOpacity style={styles.toolbarCircleBtn} onPress={handleResetView} activeOpacity={0.8}>
+            <Text style={styles.toolbarBtnIcon}>🎯</Text>
           </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.saveSearchBtn}>
-          <Text style={styles.saveSearchText}>Save Search</Text>
-        </TouchableOpacity>
       </View>
 
-      {/* ── Property preview card (giống hệt MapScreen) ── */}
+      {/* ── Property preview card ── */}
       {selectedProperty && (
         <Animated.View
           style={[
@@ -323,7 +450,7 @@ const ZillowMapScreen = () => {
             {
               opacity: previewAnim,
               transform: [{
-                translateY: previewAnim.interpolate({ inputRange: [0, 1], outputRange: [80, 0] }),
+                translateY: previewAnim.interpolate({ inputRange: [0, 1], outputRange: [60, 0] }),
               }],
             },
           ]}
@@ -331,64 +458,88 @@ const ZillowMapScreen = () => {
           <PropertyPreviewCard property={selectedProperty} onClose={hidePreview} />
         </Animated.View>
       )}
+
+      {/* ── Filter panel ── */}
+      <FilterPanel
+        visible={filterVisible}
+        onClose={() => setFilterVisible(false)}
+        onProvinceSelect={handleFilterProvinceSelect}
+      />
     </View>
   );
 };
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#E5E7EB' },
+  container: { flex: 1, backgroundColor: '#e8e0d8' },
+
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    alignItems: 'center', justifyContent: 'center', gap: 12, zIndex: 99,
+  },
+  loadingText: { fontSize: 14, color: '#6B7280', fontWeight: '500' },
 
   topBar: {
     position: 'absolute', left: 12, right: 12,
     flexDirection: 'row', alignItems: 'center', gap: 8, zIndex: 10,
   },
-  searchBar: {
-    flex: 1, flexDirection: 'row', alignItems: 'center',
+  searchWrapper: { flex: 1 },
+  mapSearchBar: {
     backgroundColor: '#FFFFFF', borderRadius: 24,
-    paddingHorizontal: 14, paddingVertical: 10, gap: 8,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.15, shadowRadius: 8, elevation: 6,
+    shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 }, elevation: 6,
   },
-  searchIcon: { fontSize: 15 },
-  searchInput: { flex: 1, fontSize: 15, color: '#222', padding: 0 },
-  micBtn: { padding: 2 },
   filterBtn: {
     width: 46, height: 46, borderRadius: 14, backgroundColor: '#FFFFFF',
     alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.12, shadowRadius: 6, elevation: 4,
+    shadowColor: '#000', shadowOpacity: 0.10, shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 }, elevation: 4,
   },
-  filterIcon: { fontSize: 20 },
+  filterBtnActive: { backgroundColor: '#EFF6FF', borderWidth: 1.5, borderColor: '#006AFF' },
+  filterBtnIcon: { fontSize: 20 },
+  filterDot: {
+    position: 'absolute', top: 8, right: 8,
+    width: 8, height: 8, borderRadius: 4, backgroundColor: '#006AFF',
+  },
+
+  pillsWrapper: { position: 'absolute', left: 0, right: 0, zIndex: 10 },
+  pillsScroll: { paddingHorizontal: 12, gap: 7, flexDirection: 'row', alignItems: 'center' },
+  provincePill: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.97)',
+    shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 }, elevation: 3,
+    borderWidth: 1, borderColor: 'transparent',
+  },
+  provincePillActive: { backgroundColor: '#006AFF', borderColor: '#006AFF' },
+  pillCheck: { fontSize: 11, color: '#FFFFFF', fontWeight: '700' },
+  provincePillText: { fontSize: 12, color: '#374151', fontWeight: '600' },
+  provincePillTextActive: { color: '#FFFFFF' },
 
   countBadge: {
     position: 'absolute', left: 12,
     backgroundColor: 'rgba(255,255,255,0.97)', borderRadius: 20,
     paddingHorizontal: 14, paddingVertical: 6,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.10, shadowRadius: 4, elevation: 3, zIndex: 10,
+    shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 }, elevation: 3, zIndex: 10,
   },
   countBadgeText: { fontSize: 12, color: '#374151', fontWeight: '700' },
 
   bottomToolbar: {
-    position: 'absolute', left: 12, right: 12,
-    flexDirection: 'row', alignItems: 'center', gap: 8, zIndex: 10,
+    position: 'absolute', left: 16, right: 16,
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'flex-start', zIndex: 10,
   },
-  toolbarLeft: { flexDirection: 'row', gap: 8 },
+  toolbarLeft: { flexDirection: 'row', gap: 10 },
   toolbarCircleBtn: {
     width: 48, height: 48, borderRadius: 24, backgroundColor: '#FFFFFF',
     alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.15, shadowRadius: 8, elevation: 5,
+    shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 }, elevation: 5,
   },
-  toolbarBtnIcon: { fontSize: 20 },
-  saveSearchBtn: {
-    flex: 1, backgroundColor: '#006aff', borderRadius: 30,
-    paddingVertical: 14, alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#006aff', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35, shadowRadius: 8, elevation: 5,
-  },
-  saveSearchText: { color: '#fff', fontSize: 15, fontWeight: '700', letterSpacing: 0.2 },
+  toolbarBtnIcon: { fontSize: 22 },
 
   previewContainer: {
     position: 'absolute', left: 16, right: 16, alignItems: 'center', zIndex: 20,

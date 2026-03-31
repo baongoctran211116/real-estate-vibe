@@ -16,22 +16,26 @@ import { Province, PropertyType } from '../types/property';
 interface FilterPanelProps {
   visible: boolean;
   onClose: () => void;
+  /** Callback khi user chọn / bỏ chọn province — để ZillowMapScreen set pendingFlyToRef */
+  onProvinceSelect?: (province: Province | undefined) => void;
 }
 
-const FilterPanel: React.FC<FilterPanelProps> = ({ visible, onClose }) => {
+const FilterPanel: React.FC<FilterPanelProps> = ({ visible, onClose, onProvinceSelect }) => {
   const filters = useFilterStore((s) => s.filters);
   const setFilter = useFilterStore((s) => s.setFilter);
   const resetFilters = useFilterStore((s) => s.resetFilters);
   const hasActive = useFilterStore((s) => s.hasActiveFilters());
 
-  // Local state for price range selection
   const [selectedPriceIndex, setSelectedPriceIndex] = useState<number | null>(null);
 
   const handleProvince = useCallback(
     (province: Province) => {
-      setFilter('province', filters.province === province ? undefined : province);
+      const next = filters.province === province ? undefined : province;
+      setFilter('province', next);
+      // Báo cho ZillowMapScreen biết để set pendingFlyToRef
+      onProvinceSelect?.(next);
     },
-    [filters.province, setFilter]
+    [filters.province, setFilter, onProvinceSelect]
   );
 
   const handlePropertyType = useCallback(
@@ -60,7 +64,8 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ visible, onClose }) => {
   const handleReset = useCallback(() => {
     resetFilters();
     setSelectedPriceIndex(null);
-  }, [resetFilters]);
+    onProvinceSelect?.(undefined);
+  }, [resetFilters, onProvinceSelect]);
 
   return (
     <Modal
@@ -145,6 +150,20 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ visible, onClose }) => {
               ))}
             </View>
           </FilterSection>
+
+          <Text style={styles.sectionTitleInline}>Chọn sao</Text>
+          <View style={[styles.chipRow, { paddingHorizontal: 20 }]}>
+            {[1, 2, 3, 4, 5].map((n) => (
+              <FilterChip
+                key={n + 10}
+                label={`${n}*`}
+                selected={filters.start === n}
+                onPress={() =>
+                  setFilter('start', filters.start === n ? undefined : n)
+                }
+              />
+            ))}
+          </View>
         </ScrollView>
 
         {/* Apply button */}
@@ -235,6 +254,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#374151',
     marginBottom: 12,
+  },
+  sectionTitleInline: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#374151',
+    marginBottom: 12,
+    paddingHorizontal: 20,
+    paddingTop: 22,
   },
   chipGrid: {
     flexDirection: 'row',

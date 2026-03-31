@@ -45,8 +45,7 @@ const MapScreen: React.FC = () => {
   // FIX grey overlay root cause: dùng kích thước đo được từ onLayout thay vì SCREEN_W/H tĩnh
   const [containerSize, setContainerSize]        = useState({ w: SCREEN_W, h: SCREEN_H });
 
-  //hoatt 
-  
+  //hoat todo: layoutTick là workaround để trigger re-render khi layout thay đổi, đảm bảo WebView nhận kích thước mới ngay lập tức  
   const [layoutTick, setLayoutTick] = useState(0);
   useEffect(() => {
     if (isFocused) {
@@ -104,17 +103,6 @@ const MapScreen: React.FC = () => {
       if (raf2) cancelAnimationFrame(raf2);
     };
   }, [isFocused, mapReady]);
-
-  // useEffect(() => {
-  //   if (isFocused && mapReady) {
-  //     const timers = [50, 200, 450, 800].map((ms) =>
-  //       setTimeout(() => {
-  //         webViewRef.current?.postMessage(JSON.stringify({ type: 'INVALIDATE_SIZE' }));
-  //       }, ms)
-  //     );
-  //     return () => timers.forEach(clearTimeout);
-  //   }
-  // }, [isFocused, mapReady]);
 
   const previewAnim  = useRef(new Animated.Value(0)).current;
 
@@ -318,7 +306,6 @@ const MapScreen: React.FC = () => {
         type:     p.propertyType,
       })),
     );
-
     return `
 <!DOCTYPE html>
 <html>
@@ -427,6 +414,7 @@ const MapScreen: React.FC = () => {
     deselectAll();
     window.ReactNativeWebView.postMessage(JSON.stringify({type:'MAP_PRESS'}));
   });
+  
   function flyToWithOffset(lat,lng,zoom,topPad){
     topPad=topPad||0;
     map.flyTo([lat,lng],zoom,{duration:0.85,easeLinearity:0.35});

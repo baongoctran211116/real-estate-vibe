@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body,
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        .price-marker {
+            background: #F5A623;
+            color: #1A1A1A;
+            font-size: 12px;
+            font-weight: 800;
+            padding: 5px 10px;
+            border-radius: 20px;
+            white-space: nowrap;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+            border: 2.5px solid #FFFFFF;
+            cursor: pointer;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            letter-spacing: -0.2px;
+        }
+
+        .price-marker::after {
+            content: '';
+            position: absolute;
+            bottom: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-top: 7px solid #F5A623;
+        }
+
+        .price-marker.selected {
+            background: #006AFF;
+            color: #FFFFFF;
+            transform: scale(1.18);
+            box-shadow: 0 4px 16px rgba(0, 106, 255, 0.55);
+            z-index: 1000 !important;
+            border-color: #FFFFFF;
+        }
+
+        .price-marker.selected::after {
+            border-top-color: #006AFF;
+        }
+
+        @keyframes popIn {
+            0% {
+                transform: scale(0.5);
+                opacity: 0;
+            }
+
+            80% {
+                transform: scale(1.1);
+            }
+
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .price-marker {
+            animation: popIn 0.25s ease forwards;
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(0, 106, 255, 0.6);
+            }
+
+            70% {
+                box-shadow: 0 0 0 14px rgba(0, 106, 255, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(0, 106, 255, 0);
+            }
+        }
+
+        .price-marker.pulse {
+            animation: pulse 1s ease-in-out 3;
+        }
+
+        .marker-cluster-small,
+        .marker-cluster-medium,
+        .marker-cluster-large {
+            background-color: rgba(245, 166, 35, 0.25) !important;
+        }
+
+        .marker-cluster-small div,
+        .marker-cluster-medium div,
+        .marker-cluster-large div {
+            background-color: #F5A623 !important;
+            color: #1A1A1A !important;
+            font-weight: 800 !important;
+            font-size: 13px !important;
+        }
+
+        .leaflet-control-zoom a {
+            border-radius: 8px !important;
+        }
+
+        .leaflet-control-zoom {
+            border-radius: 10px !important;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+        }
+
+        .leaflet-control-attribution {
+            font-size: 9px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <script>
+        const INIT_LAT = ${ INIT_LAT }, INIT_LNG = ${ INIT_LNG }, INIT_ZOOM = ${ INIT_ZOOM };
+        const map = L.map('map', { zoomControl: false }).setView([INIT_LAT, INIT_LNG], INIT_ZOOM);
+        L.tileLayer('https://mt1.google.com/vt/lyrs=r&x={x}&y={y}&z={z}', {
+            attribution: '© OpenStreetMap', maxZoom: 19,
+        }).addTo(map);
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+        const clusterGroup = L.markerClusterGroup({
+            maxClusterRadius: 50, showCoverageOnHover: false,
+            spiderfyOnMaxZoom: true, zoomToBoundsOnClick: true,
+            iconCreateFunction: function (cluster) {
+                const count = cluster.getChildCount();
+                const size = count < 10 ? 'small' : count < 50 ? 'medium' : 'large';
+                return L.divIcon({ html: '<div>' + count + '</div>', className: 'marker-cluster marker-cluster-' + size, iconSize: [40, 40] });
+            },
+        });
+        const markers = ${ markersJson };
+        let selectedId = null;
+        const markerMap = {};
+        function deselectAll() {
+            if (selectedId) {
+                const el = document.getElementById('marker-' + selectedId);
+                if (el) el.classList.remove('selected', 'pulse');
+                selectedId = null;
+            }
+        }
+        function selectMarker(id) {
+            deselectAll(); selectedId = id;
+            const el = document.getElementById('marker-' + id);
+            if (el) el.classList.add('selected');
+        }
+        markers.forEach(function (p) {
+            const icon = L.divIcon({
+                html: '<div class="price-marker" id="marker-' + p.id + '">' + p.price + '</div>',
+                className: '', iconSize: null, iconAnchor: [0, 28],
+            });
+            const marker = L.marker([p.lat, p.lng], { icon });
+            marker.on('click', function (e) {
+                L.DomEvent.stopPropagation(e);
+                selectMarker(p.id);
+                window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MARKER_PRESS', propertyId: p.id }));
+            });
+            markerMap[p.id] = { leafletMarker: marker, data: p };
+            clusterGroup.addLayer(marker);
+        });
+        map.addLayer(clusterGroup);
+        map.on('click', function () {
+            deselectAll();
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MAP_PRESS' }));
+        });
+        function flyToWithOffset(lat, lng, zoom, topPad) {
+            topPad = topPad || 0;
+            map.flyTo([lat, lng], zoom, { duration: 0.85, easeLinearity: 0.35 });
+            if (topPad > 0) {
+                map.once('moveend', function () {
+                    map.panBy([0, Math.round(topPad / 2)], { animate: true, duration: 0.25, easeLinearity: 0.5 });
+                });
+            }
+        }
+        function handleMessage(e) {
+            try {
+                const msg = JSON.parse(e.data);
+                console.log('[WebView message]', msg);
+                //if (msg.type === 'FLY_TO') flyToWithOffset(msg.lat, msg.lng, msg.zoom, msg.topPad || 0);
+                if (msg.type === 'FLY_TO') {
+                    flyToWithPadding(
+                        msg.lat,
+                        msg.lng,
+                        msg.zoom,
+                        msg.topPad || 0,
+                        msg.bottomPad || 0
+                    );
+                }
+                if (msg.type === 'INVALIDATE_SIZE') { map.invalidateSize(true); }
+                if (msg.type === 'RESET_VIEW') {
+                    deselectAll();
+                    map.flyTo([INIT_LAT, INIT_LNG], INIT_ZOOM, { duration: 0.85, easeLinearity: 0.35 });
+                }
+                if (msg.type === 'DESELECT') deselectAll();
+                if (msg.type === 'JUMP_TO_PROPERTY') {
+                    const target = markerMap[msg.propertyId];
+                    if (!target) return;
+                    map.flyTo([target.data.lat, target.data.lng], 16, { duration: 1.0 });
+                    map.once('moveend', function () {
+                        clusterGroup.zoomToShowLayer(target.leafletMarker, function () {
+                            selectMarker(msg.propertyId);
+                            const el = document.getElementById('marker-' + msg.propertyId);
+                            if (el) { el.classList.add('pulse'); setTimeout(function () { el.classList.remove('pulse'); }, 3500); }
+                        });
+                        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'JUMP_DONE', propertyId: msg.propertyId }));
+                    });
+                }
+            } catch (err) { }
+        }
+        document.addEventListener('message', handleMessage);
+        window.addEventListener('message', handleMessage);
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MAP_READY' }));
+        // Force Leaflet to recalculate its container size at multiple checkpoints
+        [100, 300, 600, 1200].forEach(function (ms) {
+            setTimeout(function () { map.invalidateSize(true); }, ms);
+            // setTimeout(() => {
+            //   map.invalidateSize(true);
+            //   //map._onResize(); //
+            // }, 0);
+        });
+        // ResizeObserver: tự invalidate bất cứ khi nào container thay đổi kích thước
+        if (typeof ResizeObserver !== 'undefined') {
+            var ro = new ResizeObserver(function () { map.invalidateSize(true); });
+            ro.observe(document.getElementById('map'));
+        }
+    </script>
+</body>
+
+</html>

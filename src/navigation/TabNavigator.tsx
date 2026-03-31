@@ -5,6 +5,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, View, Text } from 'react-native';
 import { TabParamList } from './types';
 import MapScreen from '../screens/MapScreen';
+import ZillowMapScreen from '../screens/ZillowMapScreen';
+
 import FavoritesScreen from '../screens/FavoritesScreen';
 import AIAssistantScreen from '../screens/AIAssistantScreen';
 import MeScreen from '../screens/MeScreen';
@@ -15,6 +17,7 @@ const Tab = createBottomTabNavigator<TabParamList>();
 
 const TAB_CONFIG: Record<string, { icon: string; activeColor: string }> = {
   Map:         { icon: '🗺️', activeColor: '#2563EB' },
+  ZillowMap:   { icon: '🗺️', activeColor: '#2563EB' },
   Favorites:   { icon: '❤️', activeColor: '#EF4444' },
   AIAssistant: { icon: '🤖', activeColor: '#7C3AED' },
   Me:          { icon: '👤', activeColor: '#059669' },
@@ -88,6 +91,15 @@ const TabNavigator: React.FC = () => {
           tabBarLabel: 'Bản đồ',
           tabBarIcon: ({ focused }) => <TabIcon tabKey="Map" focused={focused} />,
           tabBarActiveTintColor: TAB_CONFIG.Map.activeColor,
+        }}
+      />
+      <Tab.Screen
+        name="ZillowMap"
+        component={ZillowMapScreen}
+        options={{
+          tabBarLabel: 'Bản đồ Zillow',
+          tabBarIcon: ({ focused }) => <TabIcon tabKey="ZillowMap" focused={focused} />,
+          tabBarActiveTintColor: TAB_CONFIG.ZillowMap.activeColor,
         }}
       />
       <Tab.Screen
