@@ -7,7 +7,7 @@ export type AuthStackParamList = {
 };
 
 export type TabParamList = {
-  Map: undefined;
+  ZillowMap: undefined;
   Favorites: undefined;
   AIAssistant: undefined;
   Me: undefined;

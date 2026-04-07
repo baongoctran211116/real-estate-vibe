@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation/types';
 import { usePropertyDetail } from '../features/property/usePropertyDetail';
-import { useFilterStore, PROVINCE_REGIONS } from '../store/useFilterStore';
+import { useFilterStore } from '../store/useFilterStore';
 import PropertyImageCarousel from '../components/PropertyImageCarousel';
 import PriceTag from '../components/PriceTag';
 import FavoriteButton from '../components/FavoriteButton';
@@ -38,7 +38,7 @@ const PropertyDetailScreen: React.FC = () => {
     flyMapTo(property.latitude, property.longitude, 17);
 
     // Navigate to Map tab
-    (navigation as any).navigate('MainTabs', { screen: 'Map' });
+    (navigation as any).navigate('MainTabs', { screen: 'ZillowMap' });
   }, [property, flyMapTo, navigation]);
 
   const handleShare = useCallback(async () => {

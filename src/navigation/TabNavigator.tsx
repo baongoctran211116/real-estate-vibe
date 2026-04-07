@@ -4,7 +4,6 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, View, Text } from 'react-native';
 import { TabParamList } from './types';
-import MapScreen from '../screens/MapScreen';
 import ZillowMapScreen from '../screens/ZillowMapScreen';
 
 import FavoritesScreen from '../screens/FavoritesScreen';
@@ -15,8 +14,7 @@ import { useAuthStore } from '../store/useAuthStore';
 
 const Tab = createBottomTabNavigator<TabParamList>();
 
-const TAB_CONFIG: Record<string, { icon: string; activeColor: string }> = {
-  Map:         { icon: '🗺️', activeColor: '#2563EB' },
+const TAB_CONFIG: Record<string, { icon: string; activeColor: string }> = {  
   ZillowMap:   { icon: '🗺️', activeColor: '#2563EB' },
   Favorites:   { icon: '❤️', activeColor: '#EF4444' },
   AIAssistant: { icon: '🤖', activeColor: '#7C3AED' },
@@ -83,16 +81,7 @@ const TabNavigator: React.FC = () => {
           marginTop: -2,
         },
       }}
-    >
-      <Tab.Screen
-        name="Map"
-        component={MapScreen}
-        options={{
-          tabBarLabel: 'Bản đồ',
-          tabBarIcon: ({ focused }) => <TabIcon tabKey="Map" focused={focused} />,
-          tabBarActiveTintColor: TAB_CONFIG.Map.activeColor,
-        }}
-      />
+    >      
       <Tab.Screen
         name="ZillowMap"
         component={ZillowMapScreen}

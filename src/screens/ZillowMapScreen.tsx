@@ -12,39 +12,36 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import PropertyPreviewCard from '../components/PropertyPreviewCard';
 import SearchBar from '../components/SearchBar';
 import FilterPanel from '../components/FilterPanel';
+
 import { Property, Province } from '../types/property';
-import { MOCK_PROPERTIES } from '../data/mockProperties';
-import { useFilterStore, PROVINCES, PROVINCE_REGIONS } from '../store/useFilterStore';
+import { useFilterStore } from '../store/useFilterStore';
+import { useMapProperties } from '../features/map/useMapProperties';
+import { useProvinces } from '../features/province/useProvinces';
+import { useMapConfig, useThemeColors, useSearchConfig } from '../features/appConfig/useAppConfig';
+import { SPACING, RADIUS } from '../utils/Constants';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Screen dimensions (init value — layout thực tính qua onLayout) ───────────
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-const INIT_LAT  = 10.7769;
-const INIT_LNG  = 106.7009;
-const INIT_ZOOM = 12;
 
-const PROVINCE_ZOOM: Record<string, { lat: number; lng: number; zoom: number }> = {
-  'Ho Chi Minh City': { lat: 10.7769, lng: 106.7009, zoom: 12 },
-  'Hanoi':            { lat: 21.0285, lng: 105.8542, zoom: 12 },
-  'Da Nang':          { lat: 16.0678, lng: 108.2208, zoom: 12 },
-  'Hai Phong':        { lat: 20.8648, lng: 106.6838, zoom: 12 },
-  'Can Tho':          { lat: 10.0341, lng: 105.7875, zoom: 12 },
-};
-
-const getProvinceView = (province: string) =>
-  PROVINCE_ZOOM[province] ?? (PROVINCE_REGIONS as any)[province] ?? null;
-
+// ─── Price formatter ──────────────────────────────────────────────────────────
 function formatPriceShort(price: number): string {
   if (price >= 1_000_000_000) return parseFloat((price / 1_000_000_000).toFixed(1)) + ' tỷ';
   if (price >= 1_000_000)     return Math.round(price / 1_000_000) + ' tr';
   return price.toString();
 }
 
-// ─── Leaflet HTML (static, load 1 lần) ───────────────────────────────────────
-// Markers update qua postMessage UPDATE_MARKERS với diffing — không xóa/tạo lại DOM
-const LEAFLET_HTML = `<!DOCTYPE html>
+// ─── Leaflet HTML builder — nhận config từ server, không hardcode ─────────────
+const buildLeafletHtml = (
+  lat:   number,
+  lng:   number,
+  zoom:  number,
+  primaryColor: string,
+  mapBg: string,
+) => `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8"/>
@@ -52,7 +49,7 @@ const LEAFLET_HTML = `<!DOCTYPE html>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
-  html,body,#map{width:100%;height:100%;background:#e8e0d8}
+  html,body,#map{width:100%;height:100%;background:${mapBg}}
   .pm{
     background:rgba(28,28,28,0.90);color:#fff;
     border-radius:20px;padding:5px 11px;
@@ -65,7 +62,7 @@ const LEAFLET_HTML = `<!DOCTYPE html>
     display:inline-flex;align-items:center;cursor:pointer;
   }
   .pm.hi{background:#f5e6c8;color:#1a1a1a;border-color:rgba(180,140,70,0.35);box-shadow:0 2px 8px rgba(180,140,70,0.30)}
-  .pm.sel{background:#006aff;color:#fff;border:2px solid rgba(255,255,255,0.85);transform:scale(1.18);box-shadow:0 4px 16px rgba(0,106,255,0.45);z-index:9999!important}
+  .pm.sel{background:${primaryColor};color:#fff;border:2px solid rgba(255,255,255,0.85);transform:scale(1.18);box-shadow:0 4px 16px rgba(0,106,255,0.45);z-index:9999!important}
   .leaflet-div-icon{background:transparent!important;border:none!important;overflow:visible!important}
   .leaflet-control-zoom{border-radius:12px!important;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,0.18)!important;border:none!important}
   .leaflet-control-zoom a{border-radius:0!important;border-bottom:1px solid #e5e7eb!important;color:#374151!important;font-weight:600!important}
@@ -78,53 +75,34 @@ const LEAFLET_HTML = `<!DOCTYPE html>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 (function(){
-  var selEl = null;
-  var markerMap = {};
-  var markerGroup = L.layerGroup();
-
-  var map = L.map('map',{
-    center:[${INIT_LAT},${INIT_LNG}],zoom:${INIT_ZOOM},
+  var selEl=null, markerMap={}, markerGroup=L.layerGroup();
+  var map=L.map('map',{
+    center:[${lat},${lng}],zoom:${zoom},
     zoomControl:false,attributionControl:false,
     zoomAnimation:true,fadeAnimation:true,markerZoomAnimation:true,
   });
-
   L.tileLayer('https://mt1.google.com/vt/lyrs=r&x={x}&y={y}&z={z}',{
     maxZoom:19,updateWhenIdle:false,updateWhenZooming:false,keepBuffer:4,
   }).addTo(map);
-
   L.control.zoom({position:'bottomright'}).addTo(map);
   markerGroup.addTo(map);
 
   function makeIcon(label,isHi){
-    return L.divIcon({
-      html:'<span class="pm'+(isHi?' hi':'')+'" >'+label+'</span>',
-      className:'',iconSize:null,iconAnchor:null,
-    });
+    return L.divIcon({html:'<span class="pm'+(isHi?' hi':'')+'" >'+label+'</span>',className:'',iconSize:null,iconAnchor:null});
   }
-
-  // Diff update — chỉ thêm/xóa markers thực sự thay đổi
   function updateMarkers(props){
     var newIds={};
-    props.forEach(function(p){ newIds[p.id]=true; });
-
-    // Xóa markers không còn trong list mới
+    props.forEach(function(p){newIds[p.id]=true;});
     Object.keys(markerMap).forEach(function(id){
-      if(!newIds[id]){ markerGroup.removeLayer(markerMap[id]); delete markerMap[id]; }
+      if(!newIds[id]){markerGroup.removeLayer(markerMap[id]);delete markerMap[id];}
     });
-
-    // Reset selected nếu bị xóa
-    if(selEl && !document.body.contains(selEl)) selEl=null;
-
-    // Thêm markers mới (bỏ qua nếu đã tồn tại)
+    if(selEl&&!document.body.contains(selEl))selEl=null;
     props.forEach(function(p){
-      if(markerMap[p.id]) return; // đã có, bỏ qua
-      var mk=L.marker([p.lat,p.lng],{
-        icon:makeIcon(p.label,p.isHighlighted),
-        zIndexOffset:p.isHighlighted?100:0,
-      });
+      if(markerMap[p.id])return;
+      var mk=L.marker([p.lat,p.lng],{icon:makeIcon(p.label,p.isHighlighted),zIndexOffset:p.isHighlighted?100:0});
       (function(prop,m){
         m.on('click',function(e){
-          if(selEl) selEl.classList.remove('sel');
+          if(selEl)selEl.classList.remove('sel');
           var el=e.target._icon&&e.target._icon.querySelector('.pm');
           if(el){el.classList.add('sel');selEl=el;}
           if(window.ReactNativeWebView)
@@ -135,31 +113,24 @@ const LEAFLET_HTML = `<!DOCTYPE html>
       markerMap[p.id]=mk;
     });
   }
-
   map.on('click',function(){
     if(selEl){selEl.classList.remove('sel');selEl=null;}
     if(window.ReactNativeWebView)
       window.ReactNativeWebView.postMessage(JSON.stringify({type:'MAP_PRESS'}));
   });
-
   function flyTo(lat,lng,zoom,topPad,bottomPad){
     var offsetY=Math.round(((topPad||0)-(bottomPad||0))/2);
     map.flyTo([lat,lng],zoom,{duration:0.75,easeLinearity:0.4});
-    if(offsetY!==0){
-      map.once('moveend',function(){
-        map.panBy([0,offsetY],{animate:true,duration:0.2});
-      });
-    }
+    if(offsetY!==0)map.once('moveend',function(){map.panBy([0,offsetY],{animate:true,duration:0.2});});
   }
-
   function onMsg(e){
-    var msg; try{msg=JSON.parse(e.data);}catch(err){return;}
-    if(msg.type==='UPDATE_MARKERS') updateMarkers(msg.markers);
-    else if(msg.type==='FLY_TO')    flyTo(msg.lat,msg.lng,msg.zoom,msg.topPad||0,msg.bottomPad||0);
-    else if(msg.type==='INVALIDATE_SIZE') map.invalidateSize(true);
+    var msg;try{msg=JSON.parse(e.data);}catch(err){return;}
+    if(msg.type==='UPDATE_MARKERS')      updateMarkers(msg.markers);
+    else if(msg.type==='FLY_TO')         flyTo(msg.lat,msg.lng,msg.zoom,msg.topPad||0,msg.bottomPad||0);
+    else if(msg.type==='INVALIDATE_SIZE')map.invalidateSize(true);
     else if(msg.type==='RESET_VIEW'){
       if(selEl){selEl.classList.remove('sel');selEl=null;}
-      map.flyTo([${INIT_LAT},${INIT_LNG}],${INIT_ZOOM},{duration:0.75});
+      map.flyTo([${lat},${lng}],${zoom},{duration:0.75});
     }
     else if(msg.type==='DESELECT'){
       if(selEl){selEl.classList.remove('sel');selEl=null;}
@@ -167,7 +138,6 @@ const LEAFLET_HTML = `<!DOCTYPE html>
   }
   document.addEventListener('message',onMsg);
   window.addEventListener('message',onMsg);
-
   setTimeout(function(){map.invalidateSize(true);},150);
   window.ReactNativeWebView.postMessage(JSON.stringify({type:'MAP_READY'}));
 })();
@@ -175,11 +145,17 @@ const LEAFLET_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
-// ─── Main Screen ─────────────────────────────────────────────────────────────
+// ─── Main Screen ──────────────────────────────────────────────────────────────
 const ZillowMapScreen: React.FC = () => {
-  const insets     = useSafeAreaInsets();
+  const insets = useSafeAreaInsets();
   const webViewRef = useRef<WebView>(null);
 
+  // ── Remote config ──────────────────────────────────────────────────────────
+  const mapConfig    = useMapConfig();       // { defaultLat, defaultLng, defaultZoom }
+  const theme        = useThemeColors();     // { primary, mapBackground, ... }
+  const searchConfig = useSearchConfig();   // { debounceMs }
+
+  // ── Store ──────────────────────────────────────────────────────────────────
   const filters      = useFilterStore((s) => s.filters);
   const setFilter    = useFilterStore((s) => s.setFilter);
   const resetFilters = useFilterStore((s) => s.resetFilters);
@@ -188,28 +164,45 @@ const ZillowMapScreen: React.FC = () => {
     Object.values(s.filters).some((v) => v !== undefined && v !== null && v !== '')
   );
 
+  // ── Data từ API ────────────────────────────────────────────────────────────
+  const { properties: allProperties, isLoading: propertiesLoading } = useMapProperties();
+  const { provinceNames, getProvinceView, getDisplayName, isLoading: provincesLoading } = useProvinces();
+
+  // ── Local state ────────────────────────────────────────────────────────────
   const [searchText, setSearchText]             = useState('');
   const [filterVisible, setFilterVisible]       = useState(false);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   const [mapReady, setMapReady]                 = useState(false);
   const [containerSize, setContainerSize]       = useState({ w: SCREEN_W, h: SCREEN_H });
 
-  const previewAnim         = useRef(new Animated.Value(0)).current;
-  const mapReadyRef         = useRef(false);
-  const insetsRef           = useRef(insets);
-  const selPropRef          = useRef(selectedProperty);
-  const containerSizeRef    = useRef({ w: SCREEN_W, h: SCREEN_H });
+  const previewAnim      = useRef(new Animated.Value(0)).current;
+  const mapReadyRef      = useRef(false);
+  const insetsRef        = useRef(insets);
+  const selPropRef       = useRef(selectedProperty);
+  const containerSizeRef = useRef({ w: SCREEN_W, h: SCREEN_H });
 
   useEffect(() => { insetsRef.current = insets; }, [insets]);
   useEffect(() => { selPropRef.current = selectedProperty; }, [selectedProperty]);
 
-  // ── send — deps rỗng, không bao giờ recreate ─────────────────────────────
+  // ── Leaflet HTML — build từ server config, chỉ rebuild khi config đổi ─────
+  const leafletHtml = useMemo(
+    () => buildLeafletHtml(
+      mapConfig.defaultLat,
+      mapConfig.defaultLng,
+      mapConfig.defaultZoom,
+      theme.primary,
+      theme.mapBackground,
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mapConfig.defaultLat, mapConfig.defaultLng, mapConfig.defaultZoom, theme.primary, theme.mapBackground]
+  );
+
+  // ── Messaging ─────────────────────────────────────────────────────────────
   const send = useCallback((msg: object) => {
     if (!mapReadyRef.current) return;
     webViewRef.current?.postMessage(JSON.stringify(msg));
   }, []);
 
-  // ── Padding đọc từ ref — không trigger re-render ──────────────────────────
   const getMapPadding = useCallback(() => ({
     topPad:    insetsRef.current.top + 150,
     bottomPad: 20 + insetsRef.current.bottom + (selPropRef.current ? 140 : 0),
@@ -220,14 +213,12 @@ const ZillowMapScreen: React.FC = () => {
     send({ type: 'FLY_TO', lat, lng, zoom, topPad, bottomPad });
   }, [send, getMapPadding]);
 
-  // ── Filter data ───────────────────────────────────────────────────────────
+  // ── Filter client-side ────────────────────────────────────────────────────
   const filteredProperties = useMemo<Property[]>(() => {
-    let list = MOCK_PROPERTIES as Property[];
-    if (filters.province)     list = list.filter(p => p.province === filters.province);
-    if (filters.propertyType) list = list.filter(p => p.propertyType === filters.propertyType);
-    if (filters.minPrice)     list = list.filter(p => p.price >= (filters.minPrice as number));
-    if (filters.maxPrice)     list = list.filter(p => p.price <= (filters.maxPrice as number));
-    if (filters.minBedrooms)  list = list.filter(p => (p as any).bedrooms >= filters.minBedrooms);
+    let list = allProperties;
+    if (filters.minPrice)    list = list.filter(p => p.price >= (filters.minPrice as number));
+    if (filters.maxPrice)    list = list.filter(p => p.price <= (filters.maxPrice as number));
+    if (filters.minBedrooms) list = list.filter(p => p.bedrooms >= (filters.minBedrooms as number));
     if (searchText.trim()) {
       const q = searchText.toLowerCase();
       list = list.filter(p =>
@@ -237,7 +228,7 @@ const ZillowMapScreen: React.FC = () => {
       );
     }
     return list;
-  }, [filters, searchText]);
+  }, [allProperties, filters, searchText]);
 
   const markers = useMemo(() =>
     filteredProperties.map(p => ({
@@ -245,7 +236,7 @@ const ZillowMapScreen: React.FC = () => {
       lat:           p.latitude,
       lng:           p.longitude,
       label:         formatPriceShort(p.price),
-      isHighlighted: !!(p as any).isHighlighted,
+      isHighlighted: !!p.isHighlighted,
     })),
     [filteredProperties]
   );
@@ -256,7 +247,6 @@ const ZillowMapScreen: React.FC = () => {
   const filteredPropertiesRef = useRef(filteredProperties);
   useEffect(() => { filteredPropertiesRef.current = filteredProperties; }, [filteredProperties]);
 
-  // ── Gửi markers khi thay đổi ─────────────────────────────────────────────
   useEffect(() => {
     send({ type: 'UPDATE_MARKERS', markers });
   }, [markers, send]);
@@ -264,19 +254,16 @@ const ZillowMapScreen: React.FC = () => {
   // ── Preview ───────────────────────────────────────────────────────────────
   const showPreview = useCallback((property: Property) => {
     setSelectedProperty(property);
-    Animated.spring(previewAnim, {
-      toValue: 1, useNativeDriver: true, tension: 65, friction: 11,
-    }).start();
+    Animated.spring(previewAnim, { toValue: 1, useNativeDriver: true, tension: 65, friction: 11 }).start();
   }, [previewAnim]);
 
   const hidePreview = useCallback(() => {
-    Animated.timing(previewAnim, {
-      toValue: 0, duration: 180, useNativeDriver: true,
-    }).start(() => setSelectedProperty(null));
+    Animated.timing(previewAnim, { toValue: 0, duration: 180, useNativeDriver: true })
+      .start(() => setSelectedProperty(null));
     send({ type: 'DESELECT' });
   }, [previewAnim, send]);
 
-  // ── WebView message handler ───────────────────────────────────────────────
+  // ── WebView handler ───────────────────────────────────────────────────────
   const handleWebViewMessage = useCallback((event: any) => {
     try {
       const msg = JSON.parse(event.nativeEvent.data);
@@ -295,20 +282,20 @@ const ZillowMapScreen: React.FC = () => {
     } catch (_) {}
   }, [showPreview, hidePreview]);
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
+  // ── Province handlers ─────────────────────────────────────────────────────
   const handleProvincePill = useCallback((province: Province) => {
     const isDeselect = filters.province === province;
     setFilter('province', isDeselect ? undefined : province);
     const r = !isDeselect ? getProvinceView(province) : null;
     if (r) flyTo(r.lat, r.lng, r.zoom);
-    else   flyTo(INIT_LAT, INIT_LNG, INIT_ZOOM);
-  }, [filters.province, setFilter, flyTo]);
+    else   flyTo(mapConfig.defaultLat, mapConfig.defaultLng, mapConfig.defaultZoom);
+  }, [filters.province, setFilter, flyTo, getProvinceView, mapConfig]);
 
   const handleFilterProvinceSelect = useCallback((province: Province | undefined) => {
     const r = province ? getProvinceView(province) : null;
     if (r) flyTo(r.lat, r.lng, r.zoom);
-    else   flyTo(INIT_LAT, INIT_LNG, INIT_ZOOM);
-  }, [flyTo]);
+    else   flyTo(mapConfig.defaultLat, mapConfig.defaultLng, mapConfig.defaultZoom);
+  }, [flyTo, getProvinceView, mapConfig]);
 
   const handleResetView = useCallback(() => {
     resetFilters();
@@ -317,21 +304,21 @@ const ZillowMapScreen: React.FC = () => {
     send({ type: 'RESET_VIEW' });
   }, [send, resetFilters, hidePreview]);
 
-  // ── Search debounce 400ms ─────────────────────────────────────────────────
+  // ── Search debounce — dùng debounceMs từ server config ───────────────────
   useEffect(() => {
     if (!mapReady || !searchText.trim()) return;
     const t = setTimeout(() => {
       const q = searchText.toLowerCase();
-      const matched = PROVINCES.find(p => p.toLowerCase().includes(q));
+      const matched = provinceNames.find(p => p.toLowerCase().includes(q));
       if (matched) {
         const r = getProvinceView(matched);
         if (r) flyTo(r.lat, r.lng, r.zoom);
       }
-    }, 400);
+    }, searchConfig.debounceMs);
     return () => clearTimeout(t);
-  }, [searchText, mapReady, flyTo]);
+  }, [searchText, mapReady, flyTo, provinceNames, getProvinceView, searchConfig.debounceMs]);
 
-  // ── Layout (chỉ setState khi kích thước thực sự thay đổi) ────────────────
+  // ── Layout ────────────────────────────────────────────────────────────────
   const handleContainerLayout = useCallback((e: any) => {
     const { width, height } = e.nativeEvent.layout;
     if (
@@ -344,15 +331,29 @@ const ZillowMapScreen: React.FC = () => {
     }
   }, [send]);
 
+  const isLoading   = propertiesLoading || provincesLoading;
   const resultCount = filteredProperties.length;
 
+  // ── Styles phụ thuộc theme (inline — không dùng StyleSheet.create vì dynamic) ─
+  const dynamicStyles = useMemo(() => ({
+    filterBtnActive: {
+      backgroundColor: theme.primaryLight ?? '#EFF6FF',
+      borderWidth: 1.5,
+      borderColor: theme.primary,
+    },
+    filterDot:         { backgroundColor: theme.primary },
+    provincePillActive:{ backgroundColor: theme.primary, borderColor: theme.primary },
+    applyBtnBg:        { backgroundColor: theme.primary },
+    countBadgeText:    { color: '#374151' },
+  }), [theme]);
+
   return (
-    <View style={styles.container} onLayout={handleContainerLayout}>
+    <View style={[styles.container, { backgroundColor: theme.mapBackground }]} onLayout={handleContainerLayout}>
 
       {/* ── Map WebView ── */}
       <WebView
         ref={webViewRef}
-        source={{ html: LEAFLET_HTML }}
+        source={{ html: leafletHtml }}
         style={[StyleSheet.absoluteFillObject, { width: containerSize.w, height: containerSize.h }]}
         androidLayerType="hardware"
         onMessage={handleWebViewMessage}
@@ -369,10 +370,12 @@ const ZillowMapScreen: React.FC = () => {
       />
 
       {/* ── Loading overlay ── */}
-      {!mapReady && (
+      {(isLoading || !mapReady) && (
         <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#006AFF" />
-          <Text style={styles.loadingText}>Đang tải bản đồ...</Text>
+          <ActivityIndicator size="large" color={theme.primary} />
+          <Text style={styles.loadingText}>
+            {!mapReady ? 'Đang tải bản đồ...' : 'Đang tải bất động sản...'}
+          </Text>
         </View>
       )}
 
@@ -387,42 +390,47 @@ const ZillowMapScreen: React.FC = () => {
           />
         </View>
         <TouchableOpacity
-          style={[styles.filterBtn, hasActive && styles.filterBtnActive]}
+          style={[styles.filterBtn, hasActive && dynamicStyles.filterBtnActive]}
           onPress={() => setFilterVisible(true)}
           activeOpacity={0.8}
         >
           <Text style={styles.filterBtnIcon}>⚙️</Text>
-          {hasActive && <View style={styles.filterDot} />}
+          {hasActive && <View style={[styles.filterDot, dynamicStyles.filterDot]} />}
         </TouchableOpacity>
       </View>
 
       {/* ── Province pills ── */}
-      <View style={[styles.pillsWrapper, { top: insets.top + 68 }]}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.pillsScroll}
-          decelerationRate="fast"
-          removeClippedSubviews
-        >
-          {PROVINCES.map((p) => {
-            const isActive = filters.province === p;
-            return (
-              <TouchableOpacity
-                key={p}
-                style={[styles.provincePill, isActive && styles.provincePillActive]}
-                onPress={() => handleProvincePill(p as Province)}
-                activeOpacity={0.75}
-              >
-                {isActive && <Text style={styles.pillCheck}>✓ </Text>}
-                <Text style={[styles.provincePillText, isActive && styles.provincePillTextActive]} numberOfLines={1}>
-                  {p.replace('Ho Chi Minh City', 'TP.HCM')}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
+      {provinceNames.length > 0 && (
+        <View style={[styles.pillsWrapper, { top: insets.top + 68 }]}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.pillsScroll}
+            decelerationRate="fast"
+            removeClippedSubviews
+          >
+            {provinceNames.map((p) => {
+              const isActive = filters.province === p;
+              return (
+                <TouchableOpacity
+                  key={p}
+                  style={[styles.provincePill, isActive && dynamicStyles.provincePillActive]}
+                  onPress={() => handleProvincePill(p)}
+                  activeOpacity={0.75}
+                >
+                  {isActive && <Text style={styles.pillCheck}>✓ </Text>}
+                  <Text
+                    style={[styles.provincePillText, isActive && styles.provincePillTextActive]}
+                    numberOfLines={1}
+                  >
+                    {getDisplayName(p)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
 
       {/* ── Result count ── */}
       <View style={[styles.countBadge, { top: insets.top + 118 }]}>
@@ -449,9 +457,7 @@ const ZillowMapScreen: React.FC = () => {
             { bottom: 2 },
             {
               opacity: previewAnim,
-              transform: [{
-                translateY: previewAnim.interpolate({ inputRange: [0, 1], outputRange: [60, 0] }),
-              }],
+              transform: [{ translateY: previewAnim.interpolate({ inputRange: [0, 1], outputRange: [60, 0] }) }],
             },
           ]}
         >
@@ -469,9 +475,9 @@ const ZillowMapScreen: React.FC = () => {
   );
 };
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
+// ─── Styles tĩnh (không phụ thuộc theme) ─────────────────────────────────────
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#e8e0d8' },
+  container: { flex: 1 },
 
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -486,53 +492,51 @@ const styles = StyleSheet.create({
   },
   searchWrapper: { flex: 1 },
   mapSearchBar: {
-    backgroundColor: '#FFFFFF', borderRadius: 24,
+    backgroundColor: '#FFFFFF', borderRadius: RADIUS.full,
     shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 10,
     shadowOffset: { width: 0, height: 3 }, elevation: 6,
   },
   filterBtn: {
-    width: 46, height: 46, borderRadius: 14, backgroundColor: '#FFFFFF',
+    width: 46, height: 46, borderRadius: RADIUS.lg, backgroundColor: '#FFFFFF',
     alignItems: 'center', justifyContent: 'center',
     shadowColor: '#000', shadowOpacity: 0.10, shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 }, elevation: 4,
   },
-  filterBtnActive: { backgroundColor: '#EFF6FF', borderWidth: 1.5, borderColor: '#006AFF' },
   filterBtnIcon: { fontSize: 20 },
   filterDot: {
     position: 'absolute', top: 8, right: 8,
-    width: 8, height: 8, borderRadius: 4, backgroundColor: '#006AFF',
+    width: 8, height: 8, borderRadius: 4,
   },
 
   pillsWrapper: { position: 'absolute', left: 0, right: 0, zIndex: 10 },
-  pillsScroll: { paddingHorizontal: 12, gap: 7, flexDirection: 'row', alignItems: 'center' },
+  pillsScroll:  { paddingHorizontal: SPACING.md, gap: 7, flexDirection: 'row', alignItems: 'center' },
   provincePill: {
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+    paddingHorizontal: SPACING.base, paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
     backgroundColor: 'rgba(255,255,255,0.97)',
     shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 }, elevation: 3,
     borderWidth: 1, borderColor: 'transparent',
   },
-  provincePillActive: { backgroundColor: '#006AFF', borderColor: '#006AFF' },
-  pillCheck: { fontSize: 11, color: '#FFFFFF', fontWeight: '700' },
-  provincePillText: { fontSize: 12, color: '#374151', fontWeight: '600' },
+  pillCheck:              { fontSize: 11, color: '#FFFFFF', fontWeight: '700' },
+  provincePillText:       { fontSize: 12, color: '#374151', fontWeight: '600' },
   provincePillTextActive: { color: '#FFFFFF' },
 
   countBadge: {
     position: 'absolute', left: 12,
-    backgroundColor: 'rgba(255,255,255,0.97)', borderRadius: 20,
-    paddingHorizontal: 14, paddingVertical: 6,
+    backgroundColor: 'rgba(255,255,255,0.97)', borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.base, paddingVertical: 6,
     shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 }, elevation: 3, zIndex: 10,
   },
-  countBadgeText: { fontSize: 12, color: '#374151', fontWeight: '700' },
+  countBadgeText: { fontSize: 12, fontWeight: '700' },
 
   bottomToolbar: {
-    position: 'absolute', left: 16, right: 16,
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'flex-start', zIndex: 10,
+    position: 'absolute', left: SPACING.base, right: SPACING.base,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', zIndex: 10,
   },
-  toolbarLeft: { flexDirection: 'row', gap: 10 },
+  toolbarLeft:      { flexDirection: 'row', gap: 10 },
   toolbarCircleBtn: {
     width: 48, height: 48, borderRadius: 24, backgroundColor: '#FFFFFF',
     alignItems: 'center', justifyContent: 'center',
@@ -542,7 +546,8 @@ const styles = StyleSheet.create({
   toolbarBtnIcon: { fontSize: 22 },
 
   previewContainer: {
-    position: 'absolute', left: 16, right: 16, alignItems: 'center', zIndex: 20,
+    position: 'absolute', left: SPACING.base, right: SPACING.base,
+    alignItems: 'center', zIndex: 20,
   },
 });
 

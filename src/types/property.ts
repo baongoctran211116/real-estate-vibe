@@ -1,13 +1,27 @@
 // filename: src/types/property.ts
-export type PropertyType = 'apartment' | 'house' | 'villa' | 'townhouse' | 'land';
 
-export type Province =
-  | 'Hanoi'
-  | 'Ho Chi Minh City'
-  | 'Da Nang'
-  | 'Hai Phong'
-  | 'Can Tho';
+import {usePropertyTypeOptions} from '../features/appConfig/useAppConfig';
+export type PropertyType = ReturnType<typeof usePropertyTypeOptions>[number]['value'];
 
+//export type PropertyType = 'apartment' | 'house' | 'villa' | 'townhouse' | 'land';
+
+// Province không còn hardcode enum — là string dynamic từ server
+export type Province = string;
+
+// ─── Province với metadata map (từ API) ──────────────────────────────────────
+export interface ProvinceInfo {
+  /** Tên chuẩn (key dùng khắp app, VD: "Ho Chi Minh City") */
+  name: Province;
+  /** Nhãn hiển thị ngắn gọn (VD: "TP.HCM") */
+  displayName: string;
+  /** Tọa độ trung tâm */
+  lat: number;
+  lng: number;
+  /** Zoom level mặc định khi flyTo tỉnh này */
+  zoom: number;
+}
+
+// ─── Property ─────────────────────────────────────────────────────────────────
 export interface Property {
   id: string;
   title: string;
@@ -25,6 +39,7 @@ export interface Property {
   description: string;
   createdAt: string;
   isFavorite: boolean;
+  isHighlighted?: boolean;
 }
 
 export interface PropertyFilters {
@@ -35,7 +50,7 @@ export interface PropertyFilters {
   propertyType?: PropertyType;
   minBedrooms?: number;
   minArea?: number;
-  start?:number;
+  start?: number;
 }
 
 export interface PaginatedResponse<T> {
