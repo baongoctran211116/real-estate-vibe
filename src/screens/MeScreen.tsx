@@ -26,7 +26,6 @@ import { RootStackParamList } from '../navigation/types';
 import { useAuthStore } from '../store/useAuthStore';
 import { useLogout } from '../features/auth/useAuth';
 import { useFavoriteStore } from '../store/useFavoriteStore';
-
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 // ─── Avatar helpers ───────────────────────────────────────────────────────────
@@ -124,8 +123,7 @@ const MeScreen: React.FC = () => {
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Tài khoản</Text>
-        </View>
-
+        </View>        
         {/* Profile or Guest */}
         {isAuthenticated && user ? (
           <>

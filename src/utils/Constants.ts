@@ -6,6 +6,12 @@
 import { AppConfig } from '../types/appConfig';
 
 export const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://bdsbds123.web.app';
+
+/**
+ * Fallback config cứng — chỉ dùng trong trường hợp fetchAppConfig() lỗi hoặc offline.
+ * Cần đủ "cứng" để app vẫn chạy được, nhưng cũng phải hợp lý để tránh UI bị vỡ.
+ * Sau khi fetch thành công, config thực sẽ ghi đè lên giá trị này. 
+ */
 export const FALLBACK_CONFIG: AppConfig = {
   map: {
     defaultLat:  10.7769,
@@ -45,12 +51,14 @@ export const FALLBACK_CONFIG: AppConfig = {
 
 // ─── Query key & stale time (infrastructure — không cần từ server) ────────────
 export const QUERY_KEYS = {
-  appConfig:     ['appConfig']     as const,
-  provinces:     ['provinces']     as const,
-  mapProperties: (filters: object) => ['mapProperties', filters] as const,
-  properties:    (page: number, filters: object) => ['properties', page, filters] as const,
-  propertyById:  (id: string)  => ['property', id] as const,
-  search:        (q: string)   => ['search', q]    as const,
+  appConfig:          ['appConfig']          as const,
+  provinces:          ['provinces']          as const,
+  mapProperties:      (filters: object)       => ['mapProperties', filters]   as const,
+  properties:         (page: number, filters: object) => ['properties', page, filters] as const,
+  propertyById:       (id: string)            => ['property', id]             as const,
+  search:             (q: string)             => ['search', q]                as const,
+  // ids thay đổi => refetch tự động để sync với API
+  favoriteProperties: (ids: string[])         => ['favoriteProperties', ...ids] as const,
 } as const;
 
 export const STALE_TIME = {
@@ -62,7 +70,7 @@ export const STALE_TIME = {
 
 // ─── Màu cứng dùng trong bootstrap UI (trước khi config load) ────────────────
 // Chỉ dùng cho ActivityIndicator / SplashScreen — KHÔNG dùng ở nơi khác.
-export const BOOTSTRAP_COLOR = '#006AFF';
+export const BOOTSTRAP_COLOR = '#ff6a00';
 
 // ─── Spacing / Radius / Typography — layout primitives, không cần từ server ──
 // Những giá trị này thuần là design token, thay đổi đòi hỏi rebuild UI dù sao.

@@ -4,7 +4,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, View, Text } from 'react-native';
 import { TabParamList } from './types';
-import ZillowMapScreen from '../screens/ZillowMapScreen';
+import BDSMapScreen from '../screens/BDSMapScreen';
 
 import FavoritesScreen from '../screens/FavoritesScreen';
 import AIAssistantScreen from '../screens/AIAssistantScreen';
@@ -14,11 +14,11 @@ import { useAuthStore } from '../store/useAuthStore';
 
 const Tab = createBottomTabNavigator<TabParamList>();
 
-const TAB_CONFIG: Record<string, { icon: string; activeColor: string }> = {  
-  ZillowMap:   { icon: '🗺️', activeColor: '#2563EB' },
-  Favorites:   { icon: '❤️', activeColor: '#EF4444' },
+const TAB_CONFIG: Record<string, { icon: string; activeColor: string }> = {
+  BDSVNMap: { icon: '🗺️', activeColor: '#2563EB' },
+  Favorites: { icon: '❤️', activeColor: '#EF4444' },
   AIAssistant: { icon: '🤖', activeColor: '#7C3AED' },
-  Me:          { icon: '👤', activeColor: '#059669' },
+  Me: { icon: '👤', activeColor: '#059669' },
 };
 
 interface TabIconProps {
@@ -81,14 +81,14 @@ const TabNavigator: React.FC = () => {
           marginTop: -2,
         },
       }}
-    >      
+    >
       <Tab.Screen
-        name="ZillowMap"
-        component={ZillowMapScreen}
+        name="BDSVNMap"
+        component={BDSMapScreen}
         options={{
-          tabBarLabel: 'Bản đồ Zillow',
-          tabBarIcon: ({ focused }) => <TabIcon tabKey="ZillowMap" focused={focused} />,
-          tabBarActiveTintColor: TAB_CONFIG.ZillowMap.activeColor,
+          tabBarLabel: 'Bản đồ BĐS',
+          tabBarIcon: ({ focused }) => <TabIcon tabKey="BDSVNMap" focused={focused} />,
+          tabBarActiveTintColor: TAB_CONFIG.BDSVNMap.activeColor,
         }}
       />
       <Tab.Screen

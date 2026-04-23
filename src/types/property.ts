@@ -2,7 +2,6 @@
 
 import {usePropertyTypeOptions} from '../features/appConfig/useAppConfig';
 export type PropertyType = ReturnType<typeof usePropertyTypeOptions>[number]['value'];
-
 //export type PropertyType = 'apartment' | 'house' | 'villa' | 'townhouse' | 'land';
 
 // Province không còn hardcode enum — là string dynamic từ server

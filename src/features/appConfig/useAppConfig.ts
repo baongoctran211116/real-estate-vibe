@@ -9,7 +9,6 @@
 // khi server deploy config mới → stale sau 30 phút → tự refetch background.
 
 import { useQuery } from '@tanstack/react-query';
-import { useMemo } from 'react';
 import { fetchAppConfig } from '../../services/appConfigService';
 import { FALLBACK_CONFIG, QUERY_KEYS, STALE_TIME } from '../../utils/Constants';
 import { AppConfig } from '../../types/appConfig';
@@ -36,6 +35,8 @@ export const useMapConfig = () => useAppConfig().map;
 
 /** Danh sách loại bất động sản từ server */
 export const usePropertyTypeOptions = () => useAppConfig().propertyTypes;
+
+console.log('propertyTypes:', JSON.stringify(useMapConfig, null, 2));
 
 /** Danh sách khoảng giá từ server */
 export const usePriceRanges = () => useAppConfig().priceRanges;

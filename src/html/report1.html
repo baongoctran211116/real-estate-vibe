@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automation Test Report Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .sidebar-item:hover {
+            background-color: #2d3748;
+        }
+
+        .status-pass {
+            color: #10b981;
+        }
+
+        .status-fail {
+            color: #ef4444;
+        }
+
+        .accordion-content {
+            display: none;
+        }
+
+        .accordion-content.active {
+            display: block;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 font-sans">
+
+    <div class="flex h-screen">
+        <div class="w-64 bg-slate-900 text-white flex flex-col">
+            <div class="p-6 text-2xl font-bold border-b border-slate-700">TestRunner UI</div>
+            <nav class="flex-1 overflow-y-auto py-4">
+                <a href="#" class="sidebar-item flex items-center px-6 py-3 bg-blue-600"><i
+                        class="fas fa-chart-line mr-3"></i> Dashboard</a>
+                <div class="px-6 py-2 text-xs uppercase text-gray-500 font-bold mt-4">Features</div>
+                <a href="#" class="sidebar-item flex items-center px-6 py-3"><i class="fas fa-comments mr-3"></i>
+                    Chat</a>
+                <a href="#" class="sidebar-item flex items-center px-6 py-3"><i class="fas fa-user mr-3"></i>
+                    Profile</a>
+                <a href="#" class="sidebar-item flex items-center px-6 py-3"><i class="fas fa-users mr-3"></i> Group</a>
+                <a href="#" class="sidebar-item flex items-center px-6 py-3"><i class="fas fa-lock mr-3"></i>
+                    Authentication</a>
+            </nav>
+        </div>
+
+        <div class="flex-1 flex flex-col overflow-hidden">
+            <header class="bg-white shadow-sm p-4 flex justify-between items-center">
+                <h2 class="text-xl font-semibold text-gray-800">Feature: Authentication API</h2>
+                <div class="flex items-center space-x-4">
+                    <span class="text-sm text-gray-500 italic"><i class="far fa-clock mr-1"></i> Last run: 2026-04-07
+                        14:30:05</span>
+                    <button class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">Run
+                        All</button>
+                </div>
+            </header>
+
+            <main class="flex-1 overflow-y-auto p-6">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                    <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-blue-500">
+                        <div class="text-gray-500 text-sm uppercase">Total Cases</div>
+                        <div class="text-2xl font-bold">128</div>
+                    </div>
+                    <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-green-500">
+                        <div class="text-gray-500 text-sm uppercase text-green-600">Passed</div>
+                        <div class="text-2xl font-bold text-green-600">120</div>
+                    </div>
+                    <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-red-500">
+                        <div class="text-gray-500 text-sm uppercase text-red-600">Failed</div>
+                        <div class="text-2xl font-bold text-red-600">5</div>
+                    </div>
+                    <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-purple-500">
+                        <div class="text-gray-500 text-sm uppercase">Duration</div>
+                        <div class="text-2xl font-bold">1m 45s</div>
+                    </div>
+                </div>
+
+                <div class="space-y-4">
+                    <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                        <button onclick="toggleAccordion('api-login')"
+                            class="w-full flex justify-between items-center p-4 bg-gray-50 hover:bg-gray-100 transition">
+                            <div class="flex items-center">
+                                <span
+                                    class="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded mr-3">POST</span>
+                                <span class="font-mono font-medium">/api/v1/auth/login</span>
+                                <span class="ml-4 text-sm text-gray-500">(12 Test Cases)</span>
+                            </div>
+                            <div class="flex items-center">
+                                <span class="text-sm font-semibold text-green-600 mr-4">100% Pass</span>
+                                <i class="fas fa-chevron-down text-gray-400"></i>
+                            </div>
+                        </button>
+                        <div id="api-login" class="accordion-content p-4 border-t">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="text-gray-400 text-sm border-b">
+                                        <th class="pb-3 font-medium">ID</th>
+                                        <th class="pb-3 font-medium">Test Case Description</th>
+                                        <th class="pb-3 font-medium">Response Time</th>
+                                        <th class="pb-3 font-medium">Status</th>
+                                        <th class="pb-3 font-medium text-right">Log</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="text-sm">
+                                    <tr class="border-b hover:bg-gray-50">
+                                        <td class="py-3 font-mono">TC-001</td>
+                                        <td class="py-3">Login thành công với tài khoản hợp lệ</td>
+                                        <td class="py-3">120ms</td>
+                                        <td class="py-3 font-bold status-pass underline decoration-2">PASSED</td>
+                                        <td class="py-3 text-right"><i
+                                                class="fas fa-external-link-alt text-blue-400 cursor-pointer"></i></td>
+                                    </tr>
+                                    <tr class="border-b hover:bg-gray-50">
+                                        <td class="py-3 font-mono">TC-002</td>
+                                        <td class="py-3">Login thất bại - Sai password</td>
+                                        <td class="py-3">95ms</td>
+                                        <td class="py-3 font-bold status-pass underline decoration-2">PASSED</td>
+                                        <td class="py-3 text-right"><i
+                                                class="fas fa-external-link-alt text-blue-400 cursor-pointer"></i></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                        <button onclick="toggleAccordion('api-register')"
+                            class="w-full flex justify-between items-center p-4 bg-gray-50 hover:bg-gray-100 transition">
+                            <div class="flex items-center">
+                                <span
+                                    class="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded mr-3">POST</span>
+                                <span class="font-mono font-medium">/api/v1/auth/register</span>
+                                <span class="ml-4 text-sm text-gray-500">(8 Test Cases)</span>
+                            </div>
+                            <div class="flex items-center">
+                                <span class="text-sm font-semibold text-red-600 mr-4">75% Pass</span>
+                                <i class="fas fa-chevron-down text-gray-400"></i>
+                            </div>
+                        </button>
+                        <div id="api-register" class="accordion-content p-4 border-t">
+                            <table class="w-full text-left border-collapse">
+                                <tbody class="text-sm">
+                                    <tr class="border-b hover:bg-gray-50">
+                                        <td class="py-3 font-mono w-24">TC-003</td>
+                                        <td class="py-3">Đăng ký với email đã tồn tại</td>
+                                        <td class="py-3 w-32">210ms</td>
+                                        <td class="py-3 font-bold status-fail underline decoration-2 w-32">FAILED</td>
+                                        <td class="py-3 text-right text-red-500 italic">Expected 400 but got 500</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        function toggleAccordion(id) {
+            const content = document.getElementById(id);
+            content.classList.toggle('active');
+        }
+    </script>
+</body>
+
+</html>

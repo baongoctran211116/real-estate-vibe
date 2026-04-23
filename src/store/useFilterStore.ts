@@ -1,9 +1,6 @@
 // filename: src/store/useFilterStore.ts
 import { create } from 'zustand';
-import { PropertyFilters, Province, PropertyType } from '../types/property';
-import { PROPERTY_TYPE_OPTIONS, PRICE_RANGES } from '../utils/Constants';
-
-export { PROPERTY_TYPE_OPTIONS as PROPERTY_TYPES, PRICE_RANGES };
+import { PropertyFilters, } from '../types/property';
 
 interface FilterState {
   filters: PropertyFilters;

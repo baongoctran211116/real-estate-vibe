@@ -20,14 +20,14 @@ type DetailRouteProp = RouteProp<RootStackParamList, 'PropertyDetail'>;
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const PropertyDetailScreen: React.FC = () => {
-  const insets    = useSafeAreaInsets();
-  const route     = useRoute<DetailRouteProp>();
+  const insets = useSafeAreaInsets();
+  const route = useRoute<DetailRouteProp>();
   const navigation = useNavigation();
   const { propertyId } = route.params;
 
   const { property, isLoading, isError } = usePropertyDetail(propertyId);
 
-  const flyMapTo   = useFilterStore((s) => s.flyMapTo);
+  const flyMapTo = useFilterStore((s) => s.flyMapTo);
 
   // ─── Jump to this property on the Map tab ────────────────
   const handleViewOnMap = useCallback(() => {
@@ -38,7 +38,7 @@ const PropertyDetailScreen: React.FC = () => {
     flyMapTo(property.latitude, property.longitude, 17);
 
     // Navigate to Map tab
-    (navigation as any).navigate('MainTabs', { screen: 'ZillowMap' });
+    (navigation as any).navigate('MainTabs', { screen: 'BDSVNMap' });
   }, [property, flyMapTo, navigation]);
 
   const handleShare = useCallback(async () => {
@@ -135,16 +135,16 @@ const PropertyDetailScreen: React.FC = () => {
           {/* Stats grid */}
           <Text style={styles.sectionTitle}>Thông tin chi tiết</Text>
           <View style={styles.statsGrid}>
-            <StatItem icon="📐" label="Diện tích"   value={formatArea(property.area)} />
+            <StatItem icon="📐" label="Diện tích" value={formatArea(property.area)} />
             {property.bedrooms > 0 && (
-              <StatItem icon="🛏️" label="Phòng ngủ"  value={`${property.bedrooms} phòng`} />
+              <StatItem icon="🛏️" label="Phòng ngủ" value={`${property.bedrooms} phòng`} />
             )}
             {property.bathrooms > 0 && (
-              <StatItem icon="🚿" label="Phòng tắm"  value={`${property.bathrooms} phòng`} />
+              <StatItem icon="🚿" label="Phòng tắm" value={`${property.bathrooms} phòng`} />
             )}
-            <StatItem icon="🏙️" label="Quận/Huyện"  value={property.district} />
-            <StatItem icon="🗺️" label="Thành phố"   value={property.province} />
-            <StatItem icon="📅" label="Ngày đăng"   value={formatDate(property.createdAt)} />
+            <StatItem icon="🏙️" label="Quận/Huyện" value={property.district} />
+            <StatItem icon="🗺️" label="Thành phố" value={property.province} />
+            <StatItem icon="📅" label="Ngày đăng" value={formatDate(property.createdAt)} />
           </View>
 
           <View style={styles.divider} />

@@ -38,12 +38,15 @@ const AppConfigInitializer: React.FC<Props> = ({ children }) => {
   });
 
   if (isLoading) {
+    console.log('AppConfigInitializer: loading config...');
     return (
       <View style={styles.splash}>
         <ActivityIndicator size="large" color={BOOTSTRAP_COLOR} />
         <Text style={styles.label}>Đang khởi động...</Text>
       </View>
     );
+  }else{
+    console.log('AppConfigInitializer: config ready, rendering app');
   }
 
   return <>{children}</>;

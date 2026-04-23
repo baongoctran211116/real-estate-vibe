@@ -7,7 +7,7 @@ export type AuthStackParamList = {
 };
 
 export type TabParamList = {
-  ZillowMap: undefined;
+  BDSVNMap: undefined;
   Favorites: undefined;
   AIAssistant: undefined;
   Me: undefined;
@@ -22,6 +22,6 @@ export type RootStackParamList = {
 
 declare global {
   namespace ReactNavigation {
-    interface RootParamList extends RootStackParamList {}
+    interface RootParamList extends RootStackParamList { }
   }
 }

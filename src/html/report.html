@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Security Test Dashboard Pro</title>
+    <style>
+        body {
+            font-family: Inter, Arial;
+            background: #0f172a;
+            color: #e2e8f0;
+            margin: 0;
+            padding: 20px
+        }
+
+        h1 {
+            color: #38bdf8
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: auto
+        }
+
+        .section {
+            margin-bottom: 30px
+        }
+
+        /* summary */
+        .summary {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px
+        }
+
+        .card {
+            flex: 1;
+            background: #1e293b;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center
+        }
+
+        .pass {
+            color: #22c55e
+        }
+
+        .fail {
+            color: #ef4444
+        }
+
+        /* layout */
+        .flex {
+            display: flex;
+            gap: 20px
+        }
+
+        .sidebar {
+            width: 250px;
+            background: #020617;
+            padding: 15px;
+            border-radius: 10px
+        }
+
+        .main {
+            flex: 1
+        }
+
+        /* feature list */
+        .feature {
+            padding: 8px;
+            cursor: pointer;
+            border-radius: 6px
+        }
+
+        .feature:hover {
+            background: #1e293b
+        }
+
+        .active {
+            background: #38bdf8;
+            color: black
+        }
+
+        /* controls */
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px
+        }
+
+        input,
+        select {
+            padding: 8px;
+            border-radius: 6px;
+            border: none
+        }
+
+        /* table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #1e293b;
+            border-radius: 10px;
+            overflow: hidden
+        }
+
+        th,
+        td {
+            padding: 10px;
+            border-bottom: 1px solid #334155
+        }
+
+        th {
+            background: #020617
+        }
+
+        tr:hover {
+            background: #334155
+        }
+
+        .status-pass {
+            color: #22c55e;
+            font-weight: bold
+        }
+
+        .status-fail {
+            color: #ef4444;
+            font-weight: bold
+        }
+
+        .badge {
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 12px
+        }
+
+        .logic {
+            background: #7c3aed
+        }
+
+        .param {
+            background: #ea580c
+        }
+
+        .auth {
+            background: #dc2626
+        }
+
+        .cmd {
+            background: #0ea5e9
+        }
+
+        .positive {
+            background: #16a34a
+        }
+
+        .details {
+            display: none;
+            background: #020617;
+            padding: 10px
+        }
+
+        button {
+            cursor: pointer;
+            padding: 5px 10px
+        }
+
+        .api-title {
+            margin-top: 15px;
+            color: #facc15
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🔐 Security Test Dashboard (Multi-Feature)</h1>
+
+        <div class="summary">
+            <div class="card">
+                <div>Total</div>
+                <div id="total"></div>
+            </div>
+            <div class="card pass">
+                <div>Passed</div>
+                <div id="passed"></div>
+            </div>
+            <div class="card fail">
+                <div>Failed</div>
+                <div id="failed"></div>
+            </div>
+            <div class="card">
+                <div>Rate</div>
+                <div id="rate"></div>
+            </div>
+        </div>
+
+        <div class="flex">
+
+            <!-- Sidebar Feature -->
+            <div class="sidebar" id="featureList"></div>
+
+            <!-- Main -->
+            <div class="main">
+
+                <div class="controls">
+                    <input id="search" placeholder="Search case_id...">
+                    <select id="filter">
+                        <option value="all">All</option>
+                        <option value="logic">logic</option>
+                        <option value="param">param</option>
+                        <option value="auth">auth</option>
+                        <option value="cmd">cmd</option>
+                        <option value="positive">positive</option>
+                    </select>
+                    <button onclick="exportJSON()">Export JSON</button>
+                </div>
+
+                <div id="content"></div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+
+        /* ================= MOCK DATA ================= */
+        const data = {
+            friend: {
+                apis: {
+                    accept_friend: [
+                        { id: "TC_F_001", desc: "valid accept", group: "positive", status: "PASS" },
+                        { id: "TC_F_002", desc: "already friend", group: "logic", status: "FAIL" }
+                    ],
+                    send_request: [
+                        { id: "TC_F_003", desc: "send ok", group: "positive", status: "PASS" }
+                    ]
+                }
+            },
+            chat: {
+                apis: {
+                    send_message: [
+                        { id: "TC_C_001", desc: "valid send", group: "positive", status: "PASS" },
+                        { id: "TC_C_002", desc: "blocked user", group: "logic", status: "FAIL" }
+                    ]
+                }
+            },
+            profile: {
+                apis: {
+                    update_profile: [
+                        { id: "TC_P_001", desc: "update self", group: "positive", status: "PASS" },
+                        { id: "TC_P_002", desc: "update other", group: "auth", status: "FAIL" }
+                    ]
+                }
+            }
+        };
+
+        let currentFeature = 'friend';
+
+        /* ================= SUMMARY ================= */
+        function calcAll() {
+            let all = [];
+            Object.values(data).forEach(f => {
+                Object.values(f.apis).forEach(api => all.push(...api));
+            });
+            return all;
+        }
+
+        function summary() {
+            const all = calcAll();
+            const total = all.length;
+            const pass = all.filter(x => x.status === 'PASS').length;
+            const fail = total - pass;
+            document.getElementById('total').innerText = total;
+            document.getElementById('passed').innerText = pass;
+            document.getElementById('failed').innerText = fail;
+            document.getElementById('rate').innerText = ((pass / total) * 100).toFixed(1) + '%';
+        }
+
+        /* ================= FEATURE LIST ================= */
+        function renderFeatures() {
+            const el = document.getElementById('featureList');
+            el.innerHTML = '';
+            Object.keys(data).forEach(f => {
+                const div = document.createElement('div');
+                div.className = 'feature' + (f === currentFeature ? ' active' : '');
+                div.innerText = f;
+                div.onclick = () => { currentFeature = f; render(); renderFeatures(); };
+                el.appendChild(div);
+            });
+        }
+
+        /* ================= MAIN RENDER ================= */
+        function render() {
+            const search = document.getElementById('search').value.toLowerCase();
+            const filter = document.getElementById('filter').value;
+            const container = document.getElementById('content');
+            container.innerHTML = '';
+
+            const apis = data[currentFeature].apis;
+
+            Object.keys(apis).forEach(apiName => {
+                const title = document.createElement('div');
+                title.className = 'api-title';
+                title.innerText = 'API: ' + apiName;
+                container.appendChild(title);
+
+                const table = document.createElement('table');
+                table.innerHTML = `<thead><tr><th>ID</th><th>Description</th><th>Group</th><th>Status</th></tr></thead>`;
+
+                const tbody = document.createElement('tbody');
+
+                apis[apiName].forEach(t => {
+                    if (filter !== 'all' && t.group !== filter) return;
+                    if (!t.id.toLowerCase().includes(search)) return;
+
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+      <td>${t.id}</td>
+      <td>${t.desc}</td>
+      <td><span class="badge ${t.group}">${t.group}</span></td>
+      <td class="${t.status === 'PASS' ? 'status-pass' : 'status-fail'}">${t.status}</td>
+    `;
+                    tbody.appendChild(tr);
+                });
+
+                table.appendChild(tbody);
+                container.appendChild(table);
+            });
+        }
+
+        /* ================= EXPORT ================= */
+        function exportJSON() {
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'report.json'; a.click();
+        }
+
+        /* ================= INIT ================= */
+        summary();
+        renderFeatures();
+        render();
+
+        document.getElementById('search').addEventListener('input', render);
+        document.getElementById('filter').addEventListener('change', render);
+
+    </script>
+
+</body>
+
+</html>

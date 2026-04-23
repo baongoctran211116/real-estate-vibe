@@ -21,6 +21,7 @@ import { ProvinceInfo } from '../types/property';
  * Dùng làm nguồn duy nhất cho PROVINCES, PROVINCE_REGIONS, PROVINCE_ZOOM.
  */
 export const getProvinces = async (): Promise<ProvinceInfo[]> => {
-  const response = await apiClient.get<ProvinceInfo[]>('/v1/api/provinces');
-  return response.data;
+  const response = await apiClient.get<{ errorCode: number; data: ProvinceInfo[] }>('/v1/api/provinces');
+  console.log('response getProvinces ', response.data);
+  return response.data.data;
 };

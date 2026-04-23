@@ -1,12 +1,11 @@
 // filename: src/services/appConfigService.ts
 // ─── Fetch remote app config từ server ───────────────────────────────────────
 import axios from 'axios';
-import { AppConfig } from '../types/appConfig';
+import { AppConfig} from '../types/appConfig';
 import { FALLBACK_CONFIG, BASE_URL} from '../utils/Constants';
 
-import configClient from './propertyService';
 // Client riêng — không cần auth interceptor, gọi sớm nhất có thể
-const configClient1 = axios.create({
+const configClient = axios.create({
   baseURL: BASE_URL,
   timeout: 8_000,
   headers: { 'Content-Type': 'application/json' },
@@ -22,12 +21,13 @@ const configClient1 = axios.create({
  * app vẫn chạy được với giá trị mặc định.
  */
 export const fetchAppConfig = async (): Promise<AppConfig> => {
-  try {
-    const res = await configClient.get<AppConfig>('/v1/config/app');
-    // Merge với fallback để đảm bảo các field mới được thêm về sau không bị undefined
-    console.log('[AppConfig] fetched remote config1:', res.data);    
-    //return deepMerge(FALLBACK_CONFIG, res.data);
-    return res.data;
+  try {    
+    const res = await configClient.get<{ errorCode: number; data: AppConfig }>('/v1/config/app');
+    // Merge với fallback để đảm bảo các field mới được thêm về sau không bị undefined    
+    console.log('[AppConfig] fetched remote config:', res.data.data);    
+    //TODO hoatt
+    return deepMerge(FALLBACK_CONFIG, res.data.data);
+    //return res.data;
   } catch (err) {
     if (__DEV__) console.warn('[AppConfig] fetch failed, using fallback:', err);
     return FALLBACK_CONFIG;

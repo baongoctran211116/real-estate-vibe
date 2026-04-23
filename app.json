@@ -1,17 +1,17 @@
 {
   "expo": {
-    "name": "Zillow Clone VN",
-    "slug": "zillow-clone-vn",
+    "name": "BĐS VN",
+    "slug": "bds-vn",
     "version": "1.0.0",
     "orientation": "portrait",
     "newArchEnabled": true,
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.yourcompany.zillowclonevn"
+      "bundleIdentifier": "com.yourcompany.bdvn"
     },
     "android": {
-      "package": "com.yourcompany.zillowclonevn",
+      "package": "com.yourcompany.bdvn",
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION"
@@ -19,8 +19,9 @@
     },
     "extra": {
       "eas": {
-        "projectId": "f2d67bde-ae6e-4cf0-a7e5-b4675c865cd1"
+        "projectId": "944b71f8-cdf5-4cec-8acd-dd39969de390"
       }
-    }
+    },
+    "owner": "hoatt1"
   }
 }

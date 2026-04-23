@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise Automation Report</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .sidebar-item.active {
+            background-color: #2563eb;
+            border-left: 4px solid #fff;
+        }
+
+        .accordion-content {
+            display: none;
+        }
+
+        .accordion-content.active {
+            display: block;
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 font-sans text-gray-900">
+
+    <div class="flex h-screen overflow-hidden">
+        <div class="w-72 bg-slate-900 text-white flex flex-col shadow-xl">
+            <div class="p-6 border-b border-slate-700">
+                <div class="flex items-center gap-3">
+                    <div class="bg-blue-500 p-2 rounded-lg"><i class="fas fa-vial"></i></div>
+                    <span class="text-xl font-bold tracking-tight">Report BAC Test v2.0</span>
+                </div>
+            </div>
+
+            <nav class="flex-1 overflow-y-auto py-4" id="sidebar-menu">
+                <div class="px-6 py-2 text-xs uppercase text-slate-500 font-bold tracking-widest">Main Modules</div>
+            </nav>
+
+            <div class="p-4 bg-slate-800 text-xs text-slate-400">
+                <p>Environment: <span class="text-green-400">Staging</span></p>
+                <p>Run by: <span class="text-white">Jenkins_Bot</span></p>
+            </div>
+        </div>
+
+        <div class="flex-1 flex flex-col">
+            <header class="bg-white border-b border-gray-200 px-8 py-4 flex justify-between items-center">
+                <div>
+                    <h2 id="current-feature-title" class="text-2xl font-bold text-slate-800">Dashboard</h2>
+                    <p class="text-sm text-gray-500" id="current-feature-desc">Select a feature to see details</p>
+                </div>
+                <div class="flex gap-4 items-center">
+                    <div class="text-right">
+                        <div class="text-xs text-gray-400 uppercase font-bold">Execution Date</div>
+                        <div class="text-sm font-medium">2026-04-07 14:50</div>
+                    </div>
+                    <button
+                        class="bg-slate-900 text-white px-5 py-2 rounded-full text-sm font-bold hover:bg-slate-800 transition">
+                        <i class="fas fa-download mr-2"></i>Export PDF
+                    </button>
+                </div>
+            </header>
+
+            <main class="flex-1 overflow-y-auto p-8">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10" id="stats-container">
+                </div>
+
+                <div class="space-y-4" id="api-list-container">
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        // DỮ LIỆU FAKE TOÀN BỘ HỆ THỐNG
+        const testData = {
+            "authen": {
+                "title": "Authentication Module",
+                "desc": "Quản lý đăng nhập, đăng ký và cấp quyền",
+                "stats": { total: 45, pass: 42, fail: 3, time: "12s" },
+                "apis": [
+                    {
+                        "method": "POST", "path": "/api/v1/login", "cases": [
+                            { "id": "AUTH-01", "desc": "Login valid credentials", "time": "85ms", "status": "PASS" },
+                            { "id": "AUTH-02", "desc": "Login with expired token", "time": "40ms", "status": "FAIL", "error": "Expected 401, Got 500" }
+                        ]
+                    },
+                    {
+                        "method": "GET", "path": "/api/v1/me", "cases": [
+                            { "id": "AUTH-03", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" }
+                        ]
+                    },
+                    {
+                        "method": "GET", "path": "/api/v1/profile", "cases": [
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS"},
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS"},
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS"},
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS"}, 
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS"},
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS" },
+                            { "id": "AUTH-04", "desc": "Get profile with valid Bearer", "time": "110ms", "status": "PASS"}
+                        ]
+                    }
+                ]
+            },
+            "chat": {
+                "title": "Realtime Chat Module",
+                "desc": "Tin nhắn đơn, nhóm và socket connection",
+                "stats": { total: 120, pass: 115, fail: 5, time: "45s" },
+                "apis": [
+                    {
+                        "method": "CMD", "path": "SEND_MESSAGE", "cases": [
+                            { "id": "CHAT-01", "desc": "Gửi tin nhắn văn bản", "time": "20ms", "status": "PASS" },
+                            { "id": "CHAT-02", "desc": "Gửi file đính kèm > 20MB", "time": "1500ms", "status": "FAIL", "error": "Socket Timeout" }
+                        ]
+                    },
+                    {
+                        "method": "GET", "path": "/api/v1/rooms", "cases": [
+                            { "id": "CHAT-03", "desc": "Lấy danh sách phòng chat", "time": "300ms", "status": "PASS" }
+                        ]
+                    }
+                ]
+            },
+            "profile": {
+                "title": "User Profile",
+                "desc": "Thông tin cá nhân và cài đặt tài khoản",
+                "stats": { total: 30, pass: 30, fail: 0, time: "8s" },
+                "apis": [
+                    {
+                        "method": "PUT", "path": "/api/v1/profile/update", "cases": [
+                            { "id": "PROF-01", "desc": "Cập nhật avatar", "time": "450ms", "status": "PASS" }
+                        ]
+                    }
+                ]
+            },
+            "friend": {
+                "title": "Friendship System",
+                "desc": "Kết bạn, chặn và tìm kiếm người dùng",
+                "stats": { total: 55, pass: 50, fail: 5, time: "15s" },
+                "apis": [
+                    {
+                        "method": "POST", "path": "/api/v1/friends/add", "cases": [
+                            { "id": "FR-01", "desc": "Gửi lời mời kết bạn", "time": "120ms", "status": "PASS" }
+                        ]
+                    }
+                ]
+            }
+        };
+
+        const menuConfig = [
+            { id: 'authen', icon: 'fa-lock', label: 'Authentication' },
+            { id: 'chat', icon: 'fa-comments', label: 'Chat System' },
+            { id: 'profile', icon: 'fa-user-circle', label: 'User Profile' },
+            { id: 'friend', icon: 'fa-user-friends', label: 'Friendship' }
+        ];
+
+        // KHỞI TẠO MENU
+        function initMenu() {
+            const menuNav = document.getElementById('sidebar-menu');
+            menuConfig.forEach(item => {
+                const a = document.createElement('a');
+                a.href = "#";
+                a.className = "sidebar-item flex items-center px-6 py-3 transition-all duration-200 text-slate-300 hover:text-white";
+                a.innerHTML = `<i class="fas ${item.icon} mr-3 w-5 text-center"></i> ${item.label}`;
+                a.onclick = (e) => {
+                    e.preventDefault();
+                    document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+                    a.classList.add('active');
+                    renderFeature(item.id);
+                };
+                menuNav.appendChild(a);
+            });
+            // Mặc định load authen
+            document.querySelector('.sidebar-item').click();
+        }
+
+        // RENDER NỘI DUNG TỪNG FEATURE
+        function renderFeature(featureId) {
+            const data = testData[featureId];
+            document.getElementById('current-feature-title').innerText = data.title;
+            document.getElementById('current-feature-desc').innerText = data.desc;
+
+            // Render Stats
+            document.getElementById('stats-container').innerHTML = `
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 italic">
+                    <div class="text-gray-400 text-xs font-bold uppercase mb-1">Total Cases</div>
+                    <div class="text-3xl font-black">${data.stats.total}</div>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <div class="text-green-500 text-xs font-bold uppercase mb-1">Passed</div>
+                    <div class="text-3xl font-black text-green-600">${data.stats.pass}</div>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <div class="text-red-500 text-xs font-bold uppercase mb-1">Failed</div>
+                    <div class="text-3xl font-black text-red-600">${data.stats.fail}</div>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <div class="text-blue-500 text-xs font-bold uppercase mb-1">Total Time</div>
+                    <div class="text-3xl font-black text-blue-600">${data.stats.time}</div>
+                </div>
+            `;
+
+            // Render API List
+            const listContainer = document.getElementById('api-list-container');
+            listContainer.innerHTML = '';
+
+            data.apis.forEach((api, index) => {
+                const apiDiv = document.createElement('div');
+                apiDiv.className = "bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden";
+
+                const methodColor = api.method === 'POST' ? 'bg-green-100 text-green-700' :
+                    api.method === 'GET' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700';
+
+                apiDiv.innerHTML = `
+                    <button onclick="toggleAccordion('api-${index}')" class="w-full flex justify-between items-center p-5 hover:bg-gray-50 transition">
+                        <div class="flex items-center gap-4">
+                            <span class="${methodColor} text-[10px] font-black px-2 py-1 rounded-md">${api.method}</span>
+                            <span class="font-mono text-sm font-semibold text-slate-700">${api.path}</span>
+                        </div>
+                        <div class="flex items-center gap-6">
+                            <div class="flex gap-2">
+                                <span class="h-2 w-2 rounded-full bg-green-500 mt-1.5"></span>
+                                <span class="text-sm font-bold">${api.cases.filter(c => c.status === 'PASS').length}</span>
+                                <span class="h-2 w-2 rounded-full bg-red-500 mt-1.5 ml-2"></span>
+                                <span class="text-sm font-bold">${api.cases.filter(c => c.status === 'FAIL').length}</span>
+                            </div>
+                            <i class="fas fa-chevron-down text-gray-300"></i>
+                        </div>
+                    </button>
+                    <div id="api-${index}" class="accordion-content border-t border-gray-100 bg-slate-50/50">
+                        <div class="p-5">
+                            <table class="w-full text-left">
+                                <thead>
+                                    <tr class="text-[11px] text-gray-400 uppercase tracking-widest border-b pb-2">
+                                        <th class="pb-3 px-2">ID</th>
+                                        <th class="pb-3">Assertion / Description</th>
+                                        <th class="pb-3">Response</th>
+                                        <th class="pb-3">Status</th>
+                                        <th class="pb-3 text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${api.cases.map(c => `
+                                        <tr class="text-sm border-b border-gray-100 last:border-0 hover:bg-white transition">
+                                            <td class="py-4 px-2 font-mono text-xs text-gray-400">${c.id}</td>
+                                            <td class="py-4 font-medium">${c.desc}</td>
+                                            <td class="py-4 text-gray-500">${c.time}</td>
+                                            <td class="py-4">
+                                                <span class="${c.status === 'PASS' ? 'text-green-600' : 'text-red-600'} font-bold text-xs uppercase">
+                                                    ${c.status}
+                                                </span>
+                                                ${c.error ? `<p class="text-[10px] text-red-400 mt-1 italic">${c.error}</p>` : ''}
+                                            </td>
+                                            <td class="py-4 text-right">
+                                                <button class="text-blue-500 hover:text-blue-700 text-xs font-bold">VIEW LOG</button>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+                listContainer.appendChild(apiDiv);
+            });
+        }
+
+        function toggleAccordion(id) {
+            const content = document.getElementById(id);
+            const isActive = content.classList.contains('active');
+            // Close all
+            document.querySelectorAll('.accordion-content').forEach(el => el.classList.remove('active'));
+            // Toggle current
+            if (!isActive) content.classList.add('active');
+        }
+
+        window.onload = initMenu;
+    </script>
+</body>
+
+</html>

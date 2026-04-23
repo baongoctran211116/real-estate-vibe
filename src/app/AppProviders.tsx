@@ -27,7 +27,6 @@ const theme = {
 // ─── Session restore (chạy sau AppConfigInitializer) ─────────────────────────
 const SessionRestorer: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isLoading } = useRestoreSession();
-
   if (isLoading) {
     return (
       <View style={styles.splash}>

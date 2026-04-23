@@ -1,5 +1,6 @@
-// filename: src/screens/ZillowMapScreen.tsx
+
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
+import * as Location from 'expo-location';
 import {
   View,
   Text,
@@ -9,6 +10,7 @@ import {
   Dimensions,
   ScrollView,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,10 +21,13 @@ import FilterPanel from '../components/FilterPanel';
 
 import { Property, Province } from '../types/property';
 import { useFilterStore } from '../store/useFilterStore';
+import { useAuthStore } from '../store/useAuthStore';
 import { useMapProperties } from '../features/map/useMapProperties';
 import { useProvinces } from '../features/province/useProvinces';
 import { useMapConfig, useThemeColors, useSearchConfig } from '../features/appConfig/useAppConfig';
 import { SPACING, RADIUS } from '../utils/Constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { submitLocation } from '../services/locationService';
 
 // ─── Screen dimensions (init value — layout thực tính qua onLayout) ───────────
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -30,15 +35,24 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 // ─── Price formatter ──────────────────────────────────────────────────────────
 function formatPriceShort(price: number): string {
   if (price >= 1_000_000_000) return parseFloat((price / 1_000_000_000).toFixed(1)) + ' tỷ';
-  if (price >= 1_000_000)     return Math.round(price / 1_000_000) + ' tr';
+  if (price >= 1_000_000) return Math.round(price / 1_000_000) + ' tr';
   return price.toString();
+}
+
+function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const p = 0.017453292519943295; // Math.PI / 180
+  const c = Math.cos;
+  const a = 0.5 - c((lat2 - lat1) * p) / 2 +
+    c(lat1 * p) * c(lat2 * p) *
+    (1 - c((lon2 - lon1) * p)) / 2;
+  return 12742 * Math.asin(Math.sqrt(a)); // 2 * R; R = 6371 km
 }
 
 // ─── Leaflet HTML builder — nhận config từ server, không hardcode ─────────────
 const buildLeafletHtml = (
-  lat:   number,
-  lng:   number,
-  zoom:  number,
+  lat: number,
+  lng: number,
+  zoom: number,
   primaryColor: string,
   mapBg: string,
 ) => `<!DOCTYPE html>
@@ -146,43 +160,99 @@ const buildLeafletHtml = (
 </html>`;
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
-const ZillowMapScreen: React.FC = () => {
+const BDSMapScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const webViewRef = useRef<WebView>(null);
 
   // ── Remote config ──────────────────────────────────────────────────────────
-  const mapConfig    = useMapConfig();       // { defaultLat, defaultLng, defaultZoom }
-  const theme        = useThemeColors();     // { primary, mapBackground, ... }
+  const mapConfig = useMapConfig();       // { defaultLat, defaultLng, defaultZoom }
+  const theme = useThemeColors();     // { primary, mapBackground, ... }
   const searchConfig = useSearchConfig();   // { debounceMs }
 
   // ── Store ──────────────────────────────────────────────────────────────────
-  const filters      = useFilterStore((s) => s.filters);
-  const setFilter    = useFilterStore((s) => s.setFilter);
+  const filters = useFilterStore((s) => s.filters);
+  const setFilter = useFilterStore((s) => s.setFilter);
   const resetFilters = useFilterStore((s) => s.resetFilters);
-  const hasActive    = useFilterStore((s) =>
+  const hasActive = useFilterStore((s) =>
     s.searchKeyword.trim().length > 0 ||
     Object.values(s.filters).some((v) => v !== undefined && v !== null && v !== '')
   );
+  const mapFlyToTarget = useFilterStore((s) => s.mapFlyToTarget);
+  const clearMapFlyTo = useFilterStore((s) => s.clearMapFlyTo);
+  const user = useAuthStore((s) => s.user);
 
   // ── Data từ API ────────────────────────────────────────────────────────────
   const { properties: allProperties, isLoading: propertiesLoading } = useMapProperties();
   const { provinceNames, getProvinceView, getDisplayName, isLoading: provincesLoading } = useProvinces();
 
   // ── Local state ────────────────────────────────────────────────────────────
-  const [searchText, setSearchText]             = useState('');
-  const [filterVisible, setFilterVisible]       = useState(false);
+  const [searchText, setSearchText] = useState('');
+  const [filterVisible, setFilterVisible] = useState(false);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
-  const [mapReady, setMapReady]                 = useState(false);
-  const [containerSize, setContainerSize]       = useState({ w: SCREEN_W, h: SCREEN_H });
+  const [mapReady, setMapReady] = useState(false);
+  const [containerSize, setContainerSize] = useState({ w: SCREEN_W, h: SCREEN_H });
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [sortedProvinces, setSortedProvinces] = useState<Province[]>([]);
 
-  const previewAnim      = useRef(new Animated.Value(0)).current;
-  const mapReadyRef      = useRef(false);
-  const insetsRef        = useRef(insets);
-  const selPropRef       = useRef(selectedProperty);
+  const previewAnim = useRef(new Animated.Value(0)).current;
+  const mapReadyRef = useRef(false);
+  const insetsRef = useRef(insets);
+  const selPropRef = useRef(selectedProperty);
   const containerSizeRef = useRef({ w: SCREEN_W, h: SCREEN_H });
+  const hasPromptedLoc = useRef(false);
 
   useEffect(() => { insetsRef.current = insets; }, [insets]);
   useEffect(() => { selPropRef.current = selectedProperty; }, [selectedProperty]);
+
+  // ── Location check & confirm modal ───────────────────────────────────────
+  // Tỉnh mặc định khi user từ chối cấp quyền vị trí
+  const DEFAULT_PROVINCE: Province = 'ho-chi-minh';
+
+  useEffect(() => {
+    if (provinceNames.length > 0 && !hasPromptedLoc.current) {
+      hasPromptedLoc.current = true;
+      (async () => {
+        let currentLoc = null;
+        let locationGranted = false;
+        try {
+          const { status } = await Location.requestForegroundPermissionsAsync();
+          if (status === 'granted') {
+            locationGranted = true;
+            const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+            currentLoc = loc.coords;
+          }
+        } catch (e) {
+          console.warn('Location error:', e);
+        }
+
+        if (!locationGranted || !currentLoc) {
+          // User từ chối hoặc lỗi → mặc định TP.HCM, không show modal
+          setFilter('province', DEFAULT_PROVINCE);
+          const r = getProvinceView(DEFAULT_PROVINCE);
+          if (r) flyTo(r.lat, r.lng, r.zoom);
+          return;
+        }
+
+        // Có location → submit + sắp xếp + show modal chọn tỉnh
+        submitLocation(currentLoc.latitude, currentLoc.longitude, user?.id);
+
+        const sorted = [...provinceNames].sort((a, b) => {
+          const infoA = getProvinceView(a);
+          const infoB = getProvinceView(b);
+          if (!infoA) return 1;
+          if (!infoB) return -1;
+          const distA = getDistance(currentLoc.latitude, currentLoc.longitude, infoA.lat, infoA.lng);
+          const distB = getDistance(currentLoc.latitude, currentLoc.longitude, infoB.lat, infoB.lng);
+          return distA - distB;
+        });
+
+        setSortedProvinces(sorted.slice(0, 4));
+        setShowConfirmModal(true);
+      })();
+    }
+  }, [provinceNames, getProvinceView]);
+
+
 
   // ── Leaflet HTML — build từ server config, chỉ rebuild khi config đổi ─────
   const leafletHtml = useMemo(
@@ -204,7 +274,7 @@ const ZillowMapScreen: React.FC = () => {
   }, []);
 
   const getMapPadding = useCallback(() => ({
-    topPad:    insetsRef.current.top + 150,
+    topPad: insetsRef.current.top + 150,
     bottomPad: 20 + insetsRef.current.bottom + (selPropRef.current ? 140 : 0),
   }), []);
 
@@ -213,11 +283,19 @@ const ZillowMapScreen: React.FC = () => {
     send({ type: 'FLY_TO', lat, lng, zoom, topPad, bottomPad });
   }, [send, getMapPadding]);
 
+  // ── Handle cross-screen map fly request ──────────────────────────────
+  useEffect(() => {
+    if (mapReady && mapFlyToTarget) {
+      flyTo(mapFlyToTarget.lat, mapFlyToTarget.lng, mapFlyToTarget.zoom);
+      clearMapFlyTo();
+    }
+  }, [mapFlyToTarget, mapReady, flyTo, clearMapFlyTo]);
+
   // ── Filter client-side ────────────────────────────────────────────────────
   const filteredProperties = useMemo<Property[]>(() => {
     let list = allProperties;
-    if (filters.minPrice)    list = list.filter(p => p.price >= (filters.minPrice as number));
-    if (filters.maxPrice)    list = list.filter(p => p.price <= (filters.maxPrice as number));
+    if (filters.minPrice) list = list.filter(p => p.price >= (filters.minPrice as number));
+    if (filters.maxPrice) list = list.filter(p => p.price <= (filters.maxPrice as number));
     if (filters.minBedrooms) list = list.filter(p => p.bedrooms >= (filters.minBedrooms as number));
     if (searchText.trim()) {
       const q = searchText.toLowerCase();
@@ -232,10 +310,10 @@ const ZillowMapScreen: React.FC = () => {
 
   const markers = useMemo(() =>
     filteredProperties.map(p => ({
-      id:            p.id,
-      lat:           p.latitude,
-      lng:           p.longitude,
-      label:         formatPriceShort(p.price),
+      id: p.id,
+      lat: p.latitude,
+      lng: p.longitude,
+      label: formatPriceShort(p.price),
       isHighlighted: !!p.isHighlighted,
     })),
     [filteredProperties]
@@ -274,12 +352,12 @@ const ZillowMapScreen: React.FC = () => {
           JSON.stringify({ type: 'UPDATE_MARKERS', markers: markersRef.current })
         );
       }
-      if (msg.type === 'MAP_PRESS')    hidePreview();
+      if (msg.type === 'MAP_PRESS') hidePreview();
       if (msg.type === 'MARKER_PRESS') {
         const prop = filteredPropertiesRef.current.find(p => p.id === msg.propertyId);
         if (prop) showPreview(prop);
       }
-    } catch (_) {}
+    } catch (_) { }
   }, [showPreview, hidePreview]);
 
   // ── Province handlers ─────────────────────────────────────────────────────
@@ -288,13 +366,13 @@ const ZillowMapScreen: React.FC = () => {
     setFilter('province', isDeselect ? undefined : province);
     const r = !isDeselect ? getProvinceView(province) : null;
     if (r) flyTo(r.lat, r.lng, r.zoom);
-    else   flyTo(mapConfig.defaultLat, mapConfig.defaultLng, mapConfig.defaultZoom);
+    else flyTo(mapConfig.defaultLat, mapConfig.defaultLng, mapConfig.defaultZoom);
   }, [filters.province, setFilter, flyTo, getProvinceView, mapConfig]);
 
   const handleFilterProvinceSelect = useCallback((province: Province | undefined) => {
     const r = province ? getProvinceView(province) : null;
     if (r) flyTo(r.lat, r.lng, r.zoom);
-    else   flyTo(mapConfig.defaultLat, mapConfig.defaultLng, mapConfig.defaultZoom);
+    else flyTo(mapConfig.defaultLat, mapConfig.defaultLng, mapConfig.defaultZoom);
   }, [flyTo, getProvinceView, mapConfig]);
 
   const handleResetView = useCallback(() => {
@@ -331,7 +409,7 @@ const ZillowMapScreen: React.FC = () => {
     }
   }, [send]);
 
-  const isLoading   = propertiesLoading || provincesLoading;
+  const isLoading = propertiesLoading || provincesLoading;
   const resultCount = filteredProperties.length;
 
   // ── Styles phụ thuộc theme (inline — không dùng StyleSheet.create vì dynamic) ─
@@ -341,10 +419,12 @@ const ZillowMapScreen: React.FC = () => {
       borderWidth: 1.5,
       borderColor: theme.primary,
     },
-    filterDot:         { backgroundColor: theme.primary },
-    provincePillActive:{ backgroundColor: theme.primary, borderColor: theme.primary },
-    applyBtnBg:        { backgroundColor: theme.primary },
-    countBadgeText:    { color: '#374151' },
+    filterDot: { backgroundColor: theme.primary },
+    provincePillActive: { backgroundColor: theme.primary, borderColor: theme.primary },
+    applyBtnBg: { backgroundColor: theme.primary },
+    countBadgeText: { color: '#374151' },
+    modalItemHighlight: { backgroundColor: theme.primaryLight ?? '#EFF6FF', borderColor: theme.primary, borderWidth: 1 },
+    modalItemTextHighlight: { color: theme.primary, fontWeight: '700' as any },
   }), [theme]);
 
   return (
@@ -471,6 +551,37 @@ const ZillowMapScreen: React.FC = () => {
         onClose={() => setFilterVisible(false)}
         onProvinceSelect={handleFilterProvinceSelect}
       />
+
+      {/* ── Confirm Modal ── */}
+      <Modal visible={showConfirmModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Bạn muốn xem bất động sản ở đâu?</Text>
+            {sortedProvinces.map((p, index) => {
+              const isCurrent = index === 0;
+              return (
+                <TouchableOpacity
+                  key={p}
+                  style={[styles.modalItem, isCurrent && dynamicStyles.modalItemHighlight]}
+                  onPress={() => {
+                    setShowConfirmModal(false);
+                    setFilter('province', p);
+                    const r = getProvinceView(p);
+                    if (r) flyTo(r.lat, r.lng, r.zoom);
+                    else flyTo(mapConfig.defaultLat, mapConfig.defaultLng, mapConfig.defaultZoom);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.modalItemText, isCurrent && dynamicStyles.modalItemTextHighlight]}>
+                    {getDisplayName(p)}
+                    {isCurrent && ' (Gần bạn nhất)'}
+                  </Text>
+                </TouchableOpacity>
+              )
+            })}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -509,7 +620,7 @@ const styles = StyleSheet.create({
   },
 
   pillsWrapper: { position: 'absolute', left: 0, right: 0, zIndex: 10 },
-  pillsScroll:  { paddingHorizontal: SPACING.md, gap: 7, flexDirection: 'row', alignItems: 'center' },
+  pillsScroll: { paddingHorizontal: SPACING.md, gap: 7, flexDirection: 'row', alignItems: 'center' },
   provincePill: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: SPACING.base, paddingVertical: SPACING.sm,
@@ -519,8 +630,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 }, elevation: 3,
     borderWidth: 1, borderColor: 'transparent',
   },
-  pillCheck:              { fontSize: 11, color: '#FFFFFF', fontWeight: '700' },
-  provincePillText:       { fontSize: 12, color: '#374151', fontWeight: '600' },
+  pillCheck: { fontSize: 11, color: '#FFFFFF', fontWeight: '700' },
+  provincePillText: { fontSize: 12, color: '#374151', fontWeight: '600' },
   provincePillTextActive: { color: '#FFFFFF' },
 
   countBadge: {
@@ -536,7 +647,7 @@ const styles = StyleSheet.create({
     position: 'absolute', left: SPACING.base, right: SPACING.base,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', zIndex: 10,
   },
-  toolbarLeft:      { flexDirection: 'row', gap: 10 },
+  toolbarLeft: { flexDirection: 'row', gap: 10 },
   toolbarCircleBtn: {
     width: 48, height: 48, borderRadius: 24, backgroundColor: '#FFFFFF',
     alignItems: 'center', justifyContent: 'center',
@@ -549,6 +660,17 @@ const styles = StyleSheet.create({
     position: 'absolute', left: SPACING.base, right: SPACING.base,
     alignItems: 'center', zIndex: 20,
   },
+
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', zIndex: 1000
+  },
+  modalContent: {
+    width: '80%', backgroundColor: '#fff', borderRadius: RADIUS.lg, padding: SPACING.lg,
+    shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 5
+  },
+  modalTitle: { fontSize: 16, fontWeight: '700', marginBottom: SPACING.md, textAlign: 'center', color: '#1F2937' },
+  modalItem: { paddingVertical: SPACING.md, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', alignItems: 'center', borderRadius: RADIUS.md, marginBottom: 8 },
+  modalItemText: { fontSize: 15, color: '#4B5563', fontWeight: '500' },
 });
 
-export default ZillowMapScreen;
+export default BDSMapScreen;

@@ -7,8 +7,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   Modal,
-  SafeAreaView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useFilterStore } from '../store/useFilterStore';
 import { useProvinces } from '../features/province/useProvinces';
@@ -32,6 +32,10 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ visible, onClose, onProvinceS
   const propertyTypes = usePropertyTypeOptions(); // từ server
   const priceRanges   = usePriceRanges();         // từ server
   const theme         = useThemeColors();          // từ server
+  
+  const insets = useSafeAreaInsets();
+  // Tính toán chiều cao của tab bar (64 + insets.bottom) để đẩy sheet lên trên
+  const TAB_BAR_HEIGHT = 64 + insets.bottom;
 
   const [selectedPriceIndex, setSelectedPriceIndex] = useState<number | null>(null);
 
@@ -74,7 +78,8 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ visible, onClose, onProvinceS
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <SafeAreaView style={styles.overlay}>
+      <View style={[styles.overlay, { paddingBottom: TAB_BAR_HEIGHT }]}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
         <View style={styles.sheet}>
           {/* Header */}
           <View style={styles.header}>
@@ -153,16 +158,18 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ visible, onClose, onProvinceS
             </TouchableOpacity>
           </View>
         </View>
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
+  overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'transparent' },
   sheet: {
     backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20,
     maxHeight: '85%',
+    shadowColor: '#000', shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15, shadowRadius: 12, elevation: 15,
   },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
